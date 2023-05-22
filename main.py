@@ -189,8 +189,17 @@ def process_screen_time(filename):
 
     img_chunk_num = 3  # Chunk of image to use when searching for anchors
     img_width = np.shape(img)[1]
+    img_height = np.shape(img)[0]
+    top_removal = int(img_height * 0.15)
     img_left = img[:, 0:int(img_width / img_chunk_num)]
     img_right = img[:, -int(img_width / img_chunk_num):]
+
+    img_left[0:top_removal, :] = get_pixel(img_left, 1)
+    img_right[0:top_removal, :] = get_pixel(img_right, 1)
+
+    cv2.imshow('Grid ROI', img_left)
+    cv2.waitKey(1000)
+    cv2.destroyAllWindows()  # destroys the window showing image
 
     # Search for left and right anchors
     d_left = pytesseract.image_to_data(img_left, config='--psm 12', output_type=Output.DICT)
@@ -269,7 +278,7 @@ def load_image(name, title, roi_x=1215, roi_y=384, roi_width=1078, roi_height=17
 
 if __name__ == '__main__':
     # process_screen_time("data/Participant 567/Day 1 1.28.23/IMG-3478.PNG")
-
+    process_screen_time("../../Downloads/Screenshot 2023-05-11 at 2.10.27 PM.png")
     acceptable_types = ["PNG", "JPG"]  # Only run these files
     omit_keys = ["Parental"]  # Don't run files with these
     root_directory = 'data/*/'
