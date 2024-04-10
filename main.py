@@ -1,15 +1,18 @@
 import os
 from glob import iglob
 import pandas as pd
+from datetime import datetime
+import re
 
 from utils import *
 
-WANT_DEBUG_LINE_FIND = False
-WANT_DEBUG_GRID = True
+WANT_DEBUG_LINE_FIND = True
+WANT_DEBUG_GRID = False
 WANT_DEBUG_SUBIMAGE = False
 WANT_DEBUG_TITLE = False
 WANT_DEBUG_SLICE = False
-VERBOSE = True
+WANT_DEBUG_LEFT = False
+VERBOSE = False
 
 
 def find_right_anchor(d, img, img_copy):
@@ -116,7 +119,7 @@ def find_left_anchor(d, img, img_copy):
                                             x - moving_index - buffer,
                                             x - moving_index + buffer,
                                             y - buffer,
-                                            y + h + buffer,
+                                            y,
                                             "vertical")
                     moving_index = moving_index + 1
                 lower_left_x = x - buffer + line_col - moving_index
@@ -168,7 +171,8 @@ def find_screenshot_title(img):
 
             if len(app_find["text"][i]) > 2:
                 title = title + " " + app_find["text"][i]
-                print("Found title: " + title)
+                if VERBOSE:
+                    print("Found title: " + title)
 
         if WANT_DEBUG_TITLE:
             show_until_destroyed("Title", app_extract)
@@ -197,9 +201,10 @@ def process_screen_time(filename):
     img_left[0:top_removal, :] = get_pixel(img_left, 1)
     img_right[0:top_removal, :] = get_pixel(img_right, 1)
 
-    cv2.imshow('Grid ROI', img_left)
-    cv2.waitKey(1000)
-    cv2.destroyAllWindows()  # destroys the window showing image
+    if WANT_DEBUG_LEFT:
+        cv2.imshow('Grid ROI', img_left)
+        cv2.waitKey(1000)
+        cv2.destroyAllWindows()  # destroys the window showing image
 
     # Search for left and right anchors
     d_left = pytesseract.image_to_data(img_left, config='--psm 12', output_type=Output.DICT)
@@ -226,19 +231,46 @@ def process_screen_time(filename):
         show_until_destroyed('Image', img_copy)
 
 
+def scale(img, scale_amount):
+    width = int(img.shape[1] * scale_amount)
+    height = int(img.shape[0] * scale_amount)
+    dim = (width, height)
+
+    # resize image
+    return cv2.resize(img, dim, interpolation=cv2.INTER_AREA)
+
+
 def load_image(name, title, roi_x=1215, roi_y=384, roi_width=1078, roi_height=177):
     img = cv2.imread(name)
     num_slice = 24  # Hours per day
     max_y = 60  # Units of minutes
+
+    scale_amount = 4
+
+    img = scale(img, scale_amount)
+    img_copy = img.copy()
+    x_correction_factor = 6
+    y_correction_factor = 8
+    height_correction_factor = -4
+
+    roi_x = roi_x * scale_amount + x_correction_factor
+    roi_y = roi_y * scale_amount + y_correction_factor
+    roi_height = roi_height * scale_amount + height_correction_factor
+    roi_width = roi_width * scale_amount
 
     slice_width = int(roi_width / num_slice)
 
     row = [title]
 
     if WANT_DEBUG_GRID:
-        cv2.imshow('Grid ROI', img[roi_y:roi_y + roi_height, roi_x:roi_x + roi_width])
-        cv2.waitKey(1000)
-        cv2.destroyAllWindows()  # destroys the window showing image
+        cv2.imshow('Grid ROI', cv2.resize(img[roi_y:roi_y + roi_height, roi_x:roi_x + roi_width], (100, 200)))
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+
+        print("Saving image to debug: ")
+        save_name = f"{root_directory}\debug" + "\\" + name.split('\\')[-1]
+        print(save_name)
+        cv2.imwrite(save_name, img[roi_y:roi_y + roi_height, roi_x:roi_x + roi_width])
 
     all_times = []  # Holder for all hours over the day
 
@@ -246,19 +278,23 @@ def load_image(name, title, roi_x=1215, roi_y=384, roi_width=1078, roi_height=17
         # Slice of image, corresponds to time bars
         slice_x = roi_x + slice_index * slice_width
         slice_of_image = img[roi_y:roi_y + roi_height, slice_x:slice_x + slice_width]
+        slice_of_image = remove_line_color(slice_of_image)
         slice_of_image = darken_non_white(slice_of_image)
         slice_of_image = reduce_color_count(slice_of_image, 2)
 
         if WANT_DEBUG_SLICE:
             show_until_destroyed('Slice of image', slice_of_image)
+        cv2.rectangle(img_copy, (slice_x, roi_y), (slice_x + slice_width, roi_y + roi_height), (0, 255, 0), 2)
 
         # Slice down the middle
         off_white_threshold = 250 * 3
         true_slice = slice_of_image[:, int(slice_width / 2), :]
+
         rows = len(true_slice)
         counter = 0
         for y_coord in range(rows - 2):
-            if true_slice[y_coord][0] == true_slice[y_coord + 2][0] and np.sum(true_slice[y_coord]) < off_white_threshold:
+            if true_slice[y_coord][0] == true_slice[y_coord + 2][0] and np.sum(
+                    true_slice[y_coord]) < off_white_threshold:
                 counter = counter + 1
         if true_slice[rows - 2][2] and np.sum(true_slice[y_coord]) < off_white_threshold:
             counter = counter + 1
@@ -267,52 +303,59 @@ def load_image(name, title, roi_x=1215, roi_y=384, roi_width=1078, roi_height=17
         if VERBOSE:
             print(str(slice_index) + ", " + str((max_y * counter / rows)))
 
-        usage_at_time = np.ceil(max_y * counter / rows)
+        usage_at_time = np.floor(max_y * counter / rows)
 
         row.append(usage_at_time)
         all_times.append(usage_at_time)
+
+    cv2.imwrite(f"debug/slice_{name.split('/')[-1]}", img_copy)
 
     row.append(np.sum(all_times))
     return row
 
 
 if __name__ == '__main__':
-    # process_screen_time("data/Participant 567/Day 1 1.28.23/IMG-3478.PNG")
-    process_screen_time("../../Downloads/Screenshot 2023-05-11 at 2.10.27 PM.png")
-    acceptable_types = ["PNG", "JPG"]  # Only run these files
-    omit_keys = ["Parental"]  # Don't run files with these
-    root_directory = 'data/*/'
+    # process_screen_time("bcm/P3-3009 Cropped/Day 8 9.9.23/IMG_0725.PNG")
+    # process_screen_time("../../Downloads/Screenshot 2023-05-11 at 2.10.27 PM.png")
+    acceptable_types = ["PNG", "JPG", "png", "JPEG"]
+    omit_keys = ["Parental", "Battery Activity", "Do Not Use"]
+    root_directory = os.path.realpath(os.path.dirname(__file__))
+    data_directory = f"{root_directory}\\data"
+    issues = []
     df = pd.DataFrame()
 
-    folder_list = [f for f in iglob(root_directory, recursive=False) if os.path.isdir(f)]
+    participant_folder_list = [f for f in iglob(f"{data_directory}\\*", recursive=True) if os.path.isdir(f)]
 
-    # Loop over all folders in folder list
-    for folder in folder_list:
+    print(participant_folder_list)
+
+    for i, participant_folder in enumerate(participant_folder_list):
         all_rows = []
-        participant = folder.split("/")[-2]
-        print(participant)
+        participant = re.search(r"(P[1|3]-[1|3]\d{3})", participant_folder)[0] if re.search(r"(P[1|3]-[1|3]\d{3})", participant_folder) else str(i)
+        day_folder_list = [f for f in iglob(participant_folder + "\\*", recursive=True) if os.path.isdir(f)]
+        sorted_day_folder_list = sorted(day_folder_list, key=lambda x: int(re.search(r"(?<=Day )(\d{1,2})", x)[0]))
+        #print(sorted_day_folder_list)
 
-        file_list = [f for f in iglob(folder + "**/*", recursive=True) if
-                     os.path.isfile(f) and (f[-3:] in acceptable_types)]
+        for j, day_folder in enumerate(sorted_day_folder_list):
+            file_list = [f for f in iglob(day_folder + "\\*", recursive=True) if
+                        os.path.isfile(f) and any(acceptable_type in f for acceptable_type in acceptable_types)]
+            for file in file_list:
+                print("Running " + file + "...")
+                if all(key not in file for key in omit_keys):
+                    row = process_screen_time(file)
 
-        # Recursively loop over all files
-        for file in file_list:
-            print("Running " + file + "...")
-            if not any(key in file for key in omit_keys):
-                row = process_screen_time(file)
-
-                if row is not None:
-                    # Data-specific date formats
-                    day = file.split("/")[2].split(" ")[0] + " " + file.split("/")[2].split(" ")[1]
-                    date = file.split("/")[2].split(" ")[2]
+                if isinstance(row, list):  # Check if row is a list
+                    date = datetime.strptime(re.search(r"(\d{1,2}-\d{1,2}-\d{2,4})", file)[0], '%m-%d-%y').date()
+                    day = f"Day {j}, {date.strftime('%A')}"
                     row = [file, day, date] + row
                     all_rows.append(row)
+                elif isinstance(row, str):  # Check if row is a string
+                    issues.append(row)
 
         # If data extraction successful...
         if len(all_rows) > 0:
             df = pd.DataFrame(np.squeeze(all_rows),
                               columns=['Filename', 'Day', 'Date', 'Title'] + list(range(24)) + ["Total"])
-            sorted_df = df.sort_values(by=['Filename'], ascending=True)
+            #sorted_df = df.sort_values(by=['Filename'], ascending=True)
 
-            with pd.ExcelWriter('output/Screen Time ' + participant + '.xlsx') as writer:
-                sorted_df.to_excel(writer, sheet_name='sheet1')
+            with pd.ExcelWriter(f'{root_directory}/output/Screen Time ' + participant + '.xlsx') as writer:
+                df.to_excel(writer, sheet_name='sheet1')
