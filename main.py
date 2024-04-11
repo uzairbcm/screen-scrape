@@ -3,10 +3,11 @@ from glob import iglob
 import pandas as pd
 from datetime import datetime
 import re
+import sys
 
-from utils import *
+from GNSM_Arcascope_utils import *
 
-WANT_DEBUG_LINE_FIND = True
+WANT_DEBUG_LINE_FIND = False
 WANT_DEBUG_GRID = False
 WANT_DEBUG_SUBIMAGE = False
 WANT_DEBUG_TITLE = False
@@ -27,49 +28,48 @@ def find_right_anchor(d, img, img_copy):
         (x, y, w, h) = (d['left'][i], d['top'][i], d['width'][i], d['height'][i])
         cv2.rectangle(img_copy, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-        if any(key in d['text'][i] for key in key_list):
-            if not found_flag:
-                found_flag = True
-                if WANT_DEBUG_LINE_FIND:
-                    cv2.rectangle(img_copy,
-                                  (x - buffer, y),
-                                  (x, y + buffer),
-                                  (255, 0, 3),
-                                  2)
-                    show_until_destroyed("Image", img_copy)
-
-                line_row = None
-                line_col = None
-
-                #  Inch up until you find the grid...
-                moving_index = 0
-                while line_row is None:
-                    line_row = extract_line(img,
-                                            x - buffer,
-                                            x,
-                                            y - moving_index,
-                                            y - moving_index + h + buffer, "horizontal")
-                    moving_index = moving_index + 1
-                upper_right_y = y + line_row - moving_index
-
-                #  Inch left until you find the grid...
-                moving_index = 0
-                while line_col is None:
-                    line_col = extract_line(img,
-                                            x - buffer - moving_index,
-                                            x - moving_index,
-                                            y,
-                                            y + h + buffer, "vertical")
-                    moving_index = moving_index + 1
-                upper_right_x = x - buffer + line_col - moving_index
-
-                if WANT_DEBUG_LINE_FIND:
-                    cv2.rectangle(img_copy,
-                                  (upper_right_x, upper_right_y),
-                                  (upper_right_x + buffer, upper_right_y + buffer),
-                                  (0, 0, 3), 2)
-
-                    show_until_destroyed("Image", img_copy)
+        if any(key in d['text'][i] for key in key_list) and not found_flag:
+            found_flag = True
+            if WANT_DEBUG_LINE_FIND:
+                cv2.rectangle(img_copy,
+                              (x - buffer, y),
+                              (x, y + buffer),
+                              (255, 0, 3),
+                              2)
+                show_until_destroyed("Image", img_copy)
+        
+            line_row = None
+            line_col = None
+        
+            #  Inch up until you find the grid...
+            moving_index = 0
+            while line_row is None:
+                line_row = extract_line(img,
+                                        x - buffer,
+                                        x,
+                                        y - moving_index,
+                                        y - moving_index + h + buffer, "horizontal")
+                moving_index = moving_index + 1
+            upper_right_y = y + line_row - moving_index
+        
+            #  Inch left until you find the grid...
+            moving_index = 0
+            while line_col is None:
+                line_col = extract_line(img,
+                                        x - buffer - moving_index,
+                                        x - moving_index,
+                                        y,
+                                        y + h + buffer, "vertical")
+                moving_index = moving_index + 1
+            upper_right_x = x - buffer + line_col - moving_index
+        
+            if WANT_DEBUG_LINE_FIND:
+                cv2.rectangle(img_copy,
+                              (upper_right_x, upper_right_y),
+                              (upper_right_x + buffer, upper_right_y + buffer),
+                              (0, 0, 3), 2)
+        
+                show_until_destroyed("Image", img_copy)
 
     return found_flag, upper_right_x, upper_right_y
 
@@ -85,55 +85,53 @@ def find_left_anchor(d, img, img_copy):
     for i in range(n_boxes):
         (x, y, w, h) = (d['left'][i], d['top'][i], d['width'][i], d['height'][i])
         cv2.rectangle(img_copy, (x, y), (x + w, y + h), (0, 255, 0), 2)
-        if any(key in d['text'][i] for key in key_list):
-            if not found_flag:
-                found_flag = True
-
-                if WANT_DEBUG_LINE_FIND:
-                    cv2.rectangle(img_copy,
-                                  (x - buffer, y - buffer),
-                                  (x + buffer + w, y + buffer + h),
-                                  (255, 0, 3), 2)
-                    show_until_destroyed("Image", img_copy)
-
-                line_row = None
-                line_col = None
-
-                #  Inch up until you find the grid...
-                moving_index = 0
-                while line_row is None:
-                    line_row = extract_line(img,
-                                            x - buffer,
-                                            x + w + buffer,
-                                            y - moving_index - buffer,
-                                            y - moving_index + buffer,
-                                            "horizontal")
-
-                    moving_index = moving_index + 1
-                lower_left_y = y - buffer + line_row - moving_index
-
-                #  Inch left until you find the grid...
-                moving_index = 0
-                while line_col is None:
-                    line_col = extract_line(img,
-                                            x - moving_index - buffer,
-                                            x - moving_index + buffer,
-                                            y - buffer,
-                                            y,
-                                            "vertical")
-                    moving_index = moving_index + 1
-                lower_left_x = x - buffer + line_col - moving_index
-
-                if WANT_DEBUG_LINE_FIND:
-                    cv2.rectangle(img_copy,
-                                  (x - 2 * buffer, y - buffer),
-                                  (x - buffer, y + h + buffer),
-                                  (0, 255, 255), 2)
-                    cv2.rectangle(img_copy,
-                                  (lower_left_x, lower_left_y),
-                                  (lower_left_x + buffer, lower_left_y + buffer),
-                                  (255, 0, 3), 2)
-                    show_until_destroyed("Image", img_copy)
+        if any(key in d['text'][i] for key in key_list) and not found_flag:
+            found_flag = True
+        
+            if WANT_DEBUG_LINE_FIND:
+                cv2.rectangle(img_copy,
+                              (x - buffer, y - buffer),
+                              (x + buffer + w, y + buffer + h),
+                              (255, 0, 3), 2)
+                show_until_destroyed("Image", img_copy)
+        
+            #  Inch up until you find the grid...
+            moving_index = 0
+            line_row = None
+            while line_row is None:
+                line_row = extract_line(img,
+                                        x - buffer,
+                                        x + w + buffer,
+                                        y - moving_index - buffer,
+                                        y - moving_index + buffer,
+                                        "horizontal")
+        
+                moving_index = moving_index + 1
+            lower_left_y = y - buffer + line_row - moving_index
+        
+            #  Inch left until you find the grid...
+            moving_index = 0
+            line_col = None
+            while line_col is None:
+                line_col = extract_line(img,
+                                        x - moving_index - buffer,
+                                        x - moving_index + buffer,
+                                        y - buffer,
+                                        y,
+                                        "vertical")
+                moving_index = moving_index + 1
+            lower_left_x = x - buffer + line_col - moving_index
+        
+            if WANT_DEBUG_LINE_FIND:
+                cv2.rectangle(img_copy,
+                              (x - 2 * buffer, y - buffer),
+                              (x - buffer, y + h + buffer),
+                              (0, 255, 255), 2)
+                cv2.rectangle(img_copy,
+                              (lower_left_x, lower_left_y),
+                              (lower_left_x + buffer, lower_left_y + buffer),
+                              (255, 0, 3), 2)
+                show_until_destroyed("Image", img_copy)
 
     return found_flag, lower_left_x, lower_left_y
 
@@ -177,9 +175,7 @@ def find_screenshot_title(img):
         if WANT_DEBUG_TITLE:
             show_until_destroyed("Title", app_extract)
 
-    title = title.lstrip()
-
-    return title
+    return title.lstrip()
 
 
 def process_screen_time(filename):
@@ -227,8 +223,10 @@ def process_screen_time(filename):
         roi_height = lower_left_y - upper_right_y
         return load_image(filename, title, roi_x, roi_y, roi_width, roi_height)
     else:
+        global issues
         print("Couldn't find graph anchors!")
-        show_until_destroyed('Image', img_copy)
+        issues.append(f"Couldn't find graph anchors for {filename}")
+        #show_until_destroyed('Image', img_copy)
 
 
 def scale(img, scale_amount):
@@ -263,18 +261,18 @@ def load_image(name, title, roi_x=1215, roi_y=384, roi_width=1078, roi_height=17
     row = [title]
 
     if WANT_DEBUG_GRID:
-        cv2.imshow('Grid ROI', cv2.resize(img[roi_y:roi_y + roi_height, roi_x:roi_x + roi_width], (100, 200)))
-        cv2.waitKey(0)
+        cv2.imshow('Grid ROI', img[roi_y:roi_y + roi_height, roi_x:roi_x + roi_width])
+        cv2.waitKey(1000)
         cv2.destroyAllWindows()
 
         print("Saving image to debug: ")
-        save_name = f"{root_directory}\debug" + "\\" + name.split('\\')[-1]
+        save_name = f"debug/{name.split('/')[-1]}"
         print(save_name)
         cv2.imwrite(save_name, img[roi_y:roi_y + roi_height, roi_x:roi_x + roi_width])
 
     all_times = []  # Holder for all hours over the day
 
-    for slice_index in range(0, num_slice):
+    for slice_index in range(num_slice):
         # Slice of image, corresponds to time bars
         slice_x = roi_x + slice_index * slice_width
         slice_of_image = img[roi_y:roi_y + roi_height, slice_x:slice_x + slice_width]
@@ -288,27 +286,29 @@ def load_image(name, title, roi_x=1215, roi_y=384, roi_width=1078, roi_height=17
 
         # Slice down the middle
         off_white_threshold = 250 * 3
-        true_slice = slice_of_image[:, int(slice_width / 2), :]
+        true_slice = slice_of_image[:, slice_width // 2, :]
 
         rows = len(true_slice)
-        counter = 0
-        for y_coord in range(rows - 2):
-            if true_slice[y_coord][0] == true_slice[y_coord + 2][0] and np.sum(
-                    true_slice[y_coord]) < off_white_threshold:
+        if rows >= 2:
+            counter = 0
+            for y_coord in range(rows - 2):
+                if true_slice[y_coord][0] == true_slice[y_coord + 2][0] and np.sum(
+                        true_slice[y_coord]) < off_white_threshold:
+                    counter = counter + 1
+            if true_slice[rows - 2][2] and np.sum(true_slice[y_coord]) < off_white_threshold:
                 counter = counter + 1
-        if true_slice[rows - 2][2] and np.sum(true_slice[y_coord]) < off_white_threshold:
-            counter = counter + 1
-        if true_slice[rows - 1][2] and np.sum(true_slice[y_coord]) < off_white_threshold:
-            counter = counter + 1
-        if VERBOSE:
-            print(str(slice_index) + ", " + str((max_y * counter / rows)))
+            if true_slice[rows - 1][2] and np.sum(true_slice[y_coord]) < off_white_threshold:
+                counter = counter + 1
+            if VERBOSE:
+                print(f"{str(slice_index)}, {str(max_y * counter / rows)}")
 
-        usage_at_time = np.floor(max_y * counter / rows)
+            usage_at_time = np.floor(max_y * counter / rows)
 
-        row.append(usage_at_time)
-        all_times.append(usage_at_time)
-
-    cv2.imwrite(f"debug/slice_{name.split('/')[-1]}", img_copy)
+            row.append(usage_at_time)
+            all_times.append(usage_at_time)
+        else:
+            row.append(0)
+            all_times.append(0)
 
     row.append(np.sum(all_times))
     return row
@@ -319,23 +319,21 @@ if __name__ == '__main__':
     # process_screen_time("../../Downloads/Screenshot 2023-05-11 at 2.10.27 PM.png")
     acceptable_types = ["PNG", "JPG", "png", "JPEG"]
     omit_keys = ["Parental", "Battery Activity", "Do Not Use"]
-    root_directory = os.path.realpath(os.path.dirname(__file__))
-    data_directory = f"{root_directory}\\data"
+    script_folder = os.path.realpath(os.path.dirname(sys.argv[0]))
+    global issues
     issues = []
     df = pd.DataFrame()
 
-    participant_folder_list = [f for f in iglob(f"{data_directory}\\*", recursive=True) if os.path.isdir(f)]
 
+    participant_folder_list = [f for f in iglob(f"{script_folder}\\data\\*", recursive=True) if os.path.isdir(f)]
     print(participant_folder_list)
 
-    for i, participant_folder in enumerate(participant_folder_list):
+    for participant_folder in participant_folder_list:
         all_rows = []
-        participant = re.search(r"(P[1|3]-[1|3]\d{3})", participant_folder)[0] if re.search(r"(P[1|3]-[1|3]\d{3})", participant_folder) else str(i)
+        participant = re.search(r"(P3-3\d{3})", participant_folder)[0] if re.search(r"(P3-3\d{3})", participant_folder) else "N/A"
         day_folder_list = [f for f in iglob(participant_folder + "\\*", recursive=True) if os.path.isdir(f)]
-        sorted_day_folder_list = sorted(day_folder_list, key=lambda x: int(re.search(r"(?<=Day )(\d{1,2})", x)[0]))
-        #print(sorted_day_folder_list)
 
-        for j, day_folder in enumerate(sorted_day_folder_list):
+        for i, day_folder in enumerate(day_folder_list):
             file_list = [f for f in iglob(day_folder + "\\*", recursive=True) if
                         os.path.isfile(f) and any(acceptable_type in f for acceptable_type in acceptable_types)]
             for file in file_list:
@@ -344,18 +342,22 @@ if __name__ == '__main__':
                     row = process_screen_time(file)
 
                 if isinstance(row, list):  # Check if row is a list
-                    date = datetime.strptime(re.search(r"(\d{1,2}-\d{1,2}-\d{2,4})", file)[0], '%m-%d-%y').date()
-                    day = f"Day {j}, {date.strftime('%A')}"
+                    date = datetime.strptime(re.search(r"(\d{1,2}\-\d{1,2}\-\d{2,4})", file)[0], '%m-%d-%y').date()
+                    day = f"Day {i}, {date.strftime('%A')}"
                     row = [file, day, date] + row
                     all_rows.append(row)
                 elif isinstance(row, str):  # Check if row is a string
                     issues.append(row)
 
         # If data extraction successful...
-        if len(all_rows) > 0:
+        if all_rows:
             df = pd.DataFrame(np.squeeze(all_rows),
                               columns=['Filename', 'Day', 'Date', 'Title'] + list(range(24)) + ["Total"])
-            #sorted_df = df.sort_values(by=['Filename'], ascending=True)
+            sorted_df = df.sort_values(by=['Filename'], ascending=True)
 
-            with pd.ExcelWriter(f'{root_directory}/output/Screen Time ' + participant + '.xlsx') as writer:
-                df.to_excel(writer, sheet_name='sheet1')
+            os.makedirs(f"{script_folder}/output", exist_ok=True)
+            with pd.ExcelWriter(f"{script_folder}/output/Screen Time " + participant + ".xlsx") as writer:
+                sorted_df.to_excel(writer, sheet_name='sheet1')
+    
+    if issues:
+        print(issues)
