@@ -52,6 +52,19 @@ def is_close(pixel_1, pixel_2, thresh=1):
     return False
 
 
+def remove_line_color(img):
+    line_color = np.array([203, 199, 199])
+    shape = np.shape(img)
+
+    for i in range(shape[0]):
+        for j in range(shape[1]):
+            pixel = img[i, j]
+            if is_close(pixel, line_color):
+                img[i, j] = [255, 255, 255]
+
+    return img
+
+
 def darken_non_white(img):
     '''Darken the non-white pixels in the bars'''
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
