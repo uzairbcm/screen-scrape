@@ -2,4 +2,6 @@
 .idea/
 data/*
 output/*
+debug/*png
+debug/*jpg
 archive/*
