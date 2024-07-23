@@ -83,7 +83,11 @@ class ScreenTimeRow:
 
 
 class ScreenshotApp(QWidget):
-    length_dimension = 600
+    
+    if os.name == 'nt':
+        length_dimension = 800
+    else:
+        length_dimension = 600
 
     def __init__(self):
         super().__init__()
@@ -403,7 +407,7 @@ class ScreenshotApp(QWidget):
             self.show_image(self.current_image_index - 1)
 
     def save_current_row(self):
-        if self.current_row():
+        if self.current_row:
             csv_path = (
                 os.path.dirname(sys.argv[0])
                 + "/output/"
