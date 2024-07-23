@@ -35,7 +35,7 @@ class BatteryRow:
         self.rows = rows
 
     def date_extracted_from_file_name(self):
-        match = re.search(r'\d{2}\.\d{2}\.\d{2}', self.full_path)
+        match = re.search(r"\d{1,2}[\.|-]\d{1,2}[\.|-]\d{2,4}", self.full_path)
 
         if match:
             return match.group(0)
@@ -64,7 +64,7 @@ class ScreenTimeRow:
         self.rows = rows
 
     def date_extracted_from_file_name(self):
-        match = re.search(r'\d{1,2}\.\d{1,2}\.\d{2,4}', self.full_path)
+        match = re.search(r"\d{1,2}[\.|-]\d{1,2}[\.|-]\d{2,4}", self.full_path)
 
         if match:
             return match.group(0)
@@ -109,9 +109,9 @@ class ScreenshotApp(QWidget):
         self.coordinates = []
         self.folder_name = ""
         self.init_ui()
-        self.current_row = BatteryRow(full_path="", file_name="", date_from_image="", time_from_ui="",
-                                      rows=list(range(25)))
-
+        self.current_row = None
+        self.failed = None
+        
     def init_ui(self):
         self.setWindowTitle('Screenshot Slideshow')
         self.setStyleSheet("QWidget { font-size: 14px; } QPushButton { font-weight: bold; }")
@@ -124,9 +124,15 @@ class ScreenshotApp(QWidget):
         btn_screen_time.clicked.connect(lambda: self.open_folder('ScreenTime'))
         layout.addWidget(btn_battery)
         layout.addWidget(btn_screen_time)
-        self.instruction_label = QLabel("Click upper left corner")
+        self.instruction_label = QLabel(
+            "Click Next/Save if the graphs match, otherwise click the upper left corner of the graph in the left image."
+        )
+        self.instruction_label.setStyleSheet("background-color:rgb(255,255,150)")
         self.instruction_label.setAlignment(Qt.AlignCenter)
+        self.instruction_label.setFixedHeight(50)
         layout.addWidget(self.instruction_label)
+        self.instruction_label.hide()
+
 
         main_image_layout = QHBoxLayout()
         layout.addLayout(main_image_layout)
@@ -145,17 +151,17 @@ class ScreenshotApp(QWidget):
 
         cropped_image_layout = QVBoxLayout()
         self.cropped_image_label = QLabel("No cropped image loaded.")
-        self.cropped_image_label.setAlignment(Qt.AlignTop)
+        self.cropped_image_label.setAlignment(Qt.AlignCenter)
         cropped_image_layout.addWidget(self.cropped_image_label)
 
         self.graph_image_label = QLabel("No graph extracted.")
-        self.graph_image_label.setAlignment(Qt.AlignTop)
+        self.graph_image_label.setAlignment(Qt.AlignCenter)
         cropped_image_layout.addWidget(self.graph_image_label)
-        cropped_image_layout.setAlignment(Qt.AlignTop)
+        cropped_image_layout.setAlignment(Qt.AlignCenter)
         main_image_layout.addLayout(cropped_image_layout)
 
         text_fields_layout = QVBoxLayout()
-        text_fields_layout.setAlignment(Qt.AlignTop)
+        text_fields_layout.setAlignment(Qt.AlignCenter)
         text_fields_layout.setSpacing(5)
         text_fields_layout.addWidget(QLabel("Image Name:"))
         self.image_name_line_edit = QLineEdit("IMG_8383.png")
@@ -183,7 +189,7 @@ class ScreenshotApp(QWidget):
         self.slider.setTickPosition(QSlider.TicksBelow)
         self.slider.setTickInterval(1)
         slider_layout.addWidget(self.slider)
-
+        self.slider.hide()
         layout.addLayout(slider_layout)
 
         self.setLayout(layout)
@@ -196,6 +202,7 @@ class ScreenshotApp(QWidget):
         self.time_label = QLabel("First time displayed in screenshot: Midnight")
         self.time_label.setAlignment(Qt.AlignCenter)
         label_layout.addWidget(self.time_label)
+        self.time_label.hide()
         label_layout.addStretch()
         layout.addLayout(label_layout)
 
@@ -204,7 +211,7 @@ class ScreenshotApp(QWidget):
         self.previous_button.clicked.connect(self.show_previous_image)
         nav_layout.addWidget(self.previous_button)
 
-        self.next_button = QPushButton('Next')
+        self.next_button = QPushButton('Next/Save')
         self.next_button.clicked.connect(self.show_next_image)
         nav_layout.addWidget(self.next_button)
 
@@ -212,7 +219,22 @@ class ScreenshotApp(QWidget):
 
         screen_geo = QDesktopWidget().screenGeometry()
 
-        self.resize(int(screen_geo.width() * 0.8), int(screen_geo.height() * 0.8))
+        if os.name == 'nt':
+            self.resize(int(screen_geo.width() * 0.6), int(screen_geo.height() * 0.6))
+        else:
+            self.resize(int(screen_geo.width() * 0.8), int(screen_geo.height() * 0.8))
+
+    def update_instruction_label(self):
+        if not self.failed:
+            self.instruction_label.setText(
+            "Click Next/Save if the graphs match, otherwise click the upper left corner of the graph in the left image to reselect."
+            )
+            self.instruction_label.setStyleSheet("background-color:rgb(255,255,150)")
+        else:
+            self.instruction_label.setText(
+                "An error occurred. To start reselecting, first click the upper left corner of the graph in the left image."
+            )
+            self.instruction_label.setStyleSheet("background-color:rgb(255,0,0)")
 
     def adjust_ui_for_image_type(self, image_type):
         if image_type == "Battery":
@@ -220,11 +242,14 @@ class ScreenshotApp(QWidget):
             self.extra_label_edit.show()
             self.slider.show()
             self.time_label.show()
+            self.instruction_label.show()
+
         elif image_type == "ScreenTime":
             self.extra_label.setText("Extracted app name:")
             self.extra_label_edit.show()
             self.slider.hide()
             self.time_label.hide()
+            self.instruction_label.show()
 
     def capture_click(self, event):
         x = event.pos().x()
@@ -233,12 +258,15 @@ class ScreenshotApp(QWidget):
         self.click_count += 1
 
         if self.click_count == 1:
-            self.instruction_label.setText("Click lower right corner")
+            self.instruction_label.setText(
+               "Now click the bottom right corner of the graph in the left image to finish the selection."
+            )
+            self.instruction_label.setStyleSheet("background-color:rgb(0,255,0)")
         elif self.click_count == 2:
             self.process_coordinates(self.coordinates[0], self.coordinates[1])
             self.coordinates = []
             self.click_count = 0
-            self.instruction_label.setText("Click upper left corner")
+            self.update_instruction_label()
 
     def process_coordinates(self, upper_left, lower_right):
         image_path = self.images[self.current_image_index]
@@ -321,16 +349,26 @@ class ScreenshotApp(QWidget):
             self.cropped_image_label.setPixmap(
                 processed_pixmap.scaled(self.length_dimension, self.length_dimension, Qt.KeepAspectRatio,
                                         Qt.SmoothTransformation))
+            self.failed = False
+            self.update_instruction_label()
+
         else:
-            self.cropped_image_label.setText("No cropped image loaded.")
+            self.cropped_image_label.setText("No cropped image could be loaded from the selection.")            
+            self.failed = True
+            self.update_instruction_label()
 
         if graph_image_path:
             processed_graph_pixmap = QPixmap(graph_image_path)
             self.graph_image_label.setPixmap(
                 processed_graph_pixmap.scaled(self.length_dimension, self.length_dimension, Qt.KeepAspectRatio,
                                               Qt.SmoothTransformation))
+            self.failed = False
+            self.update_instruction_label()
+
         else:
-            self.graph_image_label.setText("No graph extracted")
+            self.graph_image_label.setText("No graph could be extracted from the selection.")
+            self.failed = True
+            self.update_instruction_label()
 
     def show_image(self, index):
         if 0 <= index < len(self.images):
@@ -355,33 +393,40 @@ class ScreenshotApp(QWidget):
             self.image_name_line_edit.setText("No image available.")
 
     def show_next_image(self):
-        self.save_current_row()
-        if self.current_image_index + 1 < len(self.images):
-            self.show_image(self.current_image_index + 1)
+        if self.current_row and not self.failed:
+            self.save_current_row()
+            if self.current_image_index + 1 < len(self.images):
+                self.show_image(self.current_image_index + 1)
 
     def show_previous_image(self):
         if self.current_image_index > 0:
             self.show_image(self.current_image_index - 1)
 
     def save_current_row(self):
-        csv_path = os.path.basename(self.folder_name) + ".csv"
+        if self.current_row():
+            csv_path = (
+                os.path.dirname(sys.argv[0])
+                + "/output/"
+                + os.path.basename(self.folder_name)
+                + ".csv"
+            )
+        
+            if self.mode == "Battery":
+                headers = BatteryRow.headers()
+                self.current_row.date_from_image = self.extra_label_edit.text()
+                self.current_row.time_from_ui = self.time_mapping[self.slider.value()]
+            else:
+                headers = ScreenTimeRow.headers()
+                self.current_row.app_title = self.extra_label_edit.text()
 
-        if self.mode == "Battery":
-            headers = BatteryRow.headers()
-            self.current_row.date_from_image = self.extra_label_edit.text()
-            self.current_row.time_from_ui = self.time_mapping[self.slider.value()]
-        else:
-            headers = ScreenTimeRow.headers()
-            self.current_row.app_title = self.extra_label_edit.text()
+            if not os.path.exists(csv_path):
+                df = pd.DataFrame(columns=headers)
+                df.to_csv(csv_path, index=False)
+                print("CSV file created with headers.")
 
-        if not os.path.exists(csv_path):
-            df = pd.DataFrame(columns=headers)
-            df.to_csv(csv_path, index=False)
-            print("CSV file created with headers.")
-
-        new_row = pd.DataFrame([self.current_row.to_csv_row()], columns=headers)
-        new_row.to_csv(csv_path, mode='a', header=False, index=False)
-        print("New row appended to CSV.")
+            new_row = pd.DataFrame([self.current_row.to_csv_row()], columns=headers)
+            new_row.to_csv(csv_path, mode='a', header=False, index=False)
+            print("New row appended to CSV.")
 
 
 if __name__ == '__main__':
