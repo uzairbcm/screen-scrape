@@ -32,7 +32,6 @@ class MagnifyingLabel(QLabel):
             if self.alignment() == Qt.AlignTop:
                 top = y - half_size
                 left = x - half_size
-            # TODO elif self.alignment() == Qt.AlignCenter:
             else:
                 raise ValueError(f"Invalid alignment {self.alignment()}, magnifying label will not work properly.")
  
