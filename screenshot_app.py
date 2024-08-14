@@ -84,10 +84,7 @@ class ScreenTimeRow:
 
 class ScreenshotApp(QWidget):
     
-    if os.name == 'nt':
-        length_dimension = 800
-    else:
-        length_dimension = 600
+      length_dimension = 600
 
     def __init__(self):
         super().__init__()
@@ -223,10 +220,7 @@ class ScreenshotApp(QWidget):
 
         screen_geo = QDesktopWidget().screenGeometry()
 
-        if os.name == 'nt':
-            self.resize(int(screen_geo.width() * 0.6), int(screen_geo.height() * 0.6))
-        else:
-            self.resize(int(screen_geo.width() * 0.8), int(screen_geo.height() * 0.8))
+        self.resize(int(screen_geo.width() * 0.8), int(screen_geo.height() * 0.8))
 
     def update_instruction_label(self):
         if not self.failed:
