@@ -2,6 +2,7 @@ from PyQt5 import QtGui
 from PyQt5.QtCore import QRect, Qt
 from PyQt5.QtGui import QPainter, QPixmap
 from PyQt5.QtWidgets import QLabel
+from numpy import half
 
 
 class MagnifyingLabel(QLabel):
@@ -27,9 +28,13 @@ class MagnifyingLabel(QLabel):
             pixmap = self.pixmap()
 
             half_size = magnify_size // (2 * magnification)
-            left = x - half_size
-            top = y - half_size
 
+            if self.alignment() == Qt.AlignTop:
+                top = y - half_size
+                left = x - half_size
+            else:
+                raise ValueError(f"Invalid alignment {self.alignment()}, magnifying label will not work properly.")
+ 
             width = magnify_size // magnification
             height = magnify_size // magnification
 

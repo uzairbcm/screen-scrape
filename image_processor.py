@@ -1,3 +1,4 @@
+import traceback
 import pytesseract
 import os
 import matplotlib.pyplot as plt
@@ -72,8 +73,8 @@ def process_image_with_grid(filename, upper_left, lower_right, is_battery=False,
         return filename, graph_filename, row, title
 
     except ImageProcessingError as e:
-        print(f"Error: {e}")
-        return filename, filename, list(range(25)), ""
+        print(f"Error: {traceback.format_exc()}")
+        return None, None, list(range(25)), ""
 
 
 def process_image(filename, is_battery=False, snap_to_grid=False):
@@ -81,7 +82,7 @@ def process_image(filename, is_battery=False, snap_to_grid=False):
         img = load_and_validate_image(filename)
         return apply_processing(filename, img, is_battery, snap_to_grid)
     except Exception as e:
-        print(f"Error during image loading or processing: {e}")
+        print(f"Error during image loading or processing: {traceback.format_exc()}")
         return None, None, list(range(25)), ""
 
 
@@ -120,8 +121,8 @@ def apply_processing(filename, img, is_battery, snap_to_grid):
         # Save the processed image and return
         filename, row, graph_filename = save_image(filename, roi_x, roi_y, roi_width, roi_height, is_battery)
         return filename, graph_filename, row, title
-    except Exception as e:
-        print(f"Processing failed: {e}")
+    except Exception:
+        print(f"Processing failed: {traceback.format_exc()}")
         return None, None, [], ""
 
 
@@ -159,8 +160,14 @@ def calculate_roi(lower_left_x, upper_right_y, roi_width, roi_height, snap_to_gr
         lower_left_x, upper_right_y, roi_width, roi_height = snap_to_grid(
             img, lower_left_x, upper_right_y, roi_width, roi_height)
 
-    if lower_left_x < 0 or upper_right_y < 0 or roi_width < 0 or roi_height < 0:
-        raise ValueError("Invalid ROI coordinates")
+    if lower_left_x < 0:
+        raise ValueError(f"Invalid ROI lower left x coordinate: {lower_left_x}")
+    elif upper_right_y < 0:
+        raise ValueError(f"Invalid ROI upper right y coordinate: {upper_right_y}")
+    elif roi_width < 0:
+        raise ValueError(f"Invalid ROI width value: {roi_width}")
+    elif roi_height < 0:
+        raise ValueError(f"Invalid ROI height value: {roi_height}")
 
     return lower_left_x, upper_right_y, roi_width, roi_height
 
