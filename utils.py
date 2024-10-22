@@ -165,6 +165,7 @@ def find_left_anchor(d, img, img_copy):
     lower_left_y = -1
     buffer = 25
     key_list = ["2A", "12", "AM"]
+    maximum_offset = 100
 
     for i in range(n_boxes):
         (x, y, w, h) = (d['left'][i], d['top'][i], d['width'][i], d['height'][i])
@@ -189,7 +190,7 @@ def find_left_anchor(d, img, img_copy):
                 #  Inch up until you find the grid...
                 print("Moving up to search for left anchor...")
                 moving_index = 0
-                while line_row is None:
+                while line_row is None and moving_index < maximum_offset:
                     line_row = extract_line(img,
                                             x - buffer,
                                             x + w + buffer,
@@ -203,7 +204,7 @@ def find_left_anchor(d, img, img_copy):
                 #  Inch left until you find the grid...
                 print("Moving left to search for left anchor...")
                 moving_index = 0
-                while line_col is None:
+                while line_col is None and moving_index < maximum_offset:
                     line_col = extract_line(img,
                                             x - moving_index - buffer,
                                             x - moving_index + buffer,

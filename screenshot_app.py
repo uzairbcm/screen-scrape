@@ -84,7 +84,7 @@ class ScreenTimeRow:
 
 class ScreenshotApp(QWidget):
     
-      length_dimension = 600
+    length_dimension = 600
 
     def __init__(self):
         super().__init__()
