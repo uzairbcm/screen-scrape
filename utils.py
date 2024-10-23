@@ -1,4 +1,5 @@
 import datetime
+from unittest import skip
 
 import cv2
 from pytesseract import pytesseract, Output
@@ -14,12 +15,11 @@ WANT_DEBUG_TEXT = False
 VERBOSE = True
 error_state = -1, -1, -1, -1
 
-
 def find_screenshot_title(img):
     title = ""
 
-    title_find = pytesseract.image_to_data(img, config='--psm 6', output_type=Output.DICT)
-    info_rect = [40, 300, 120, 750]  # Default title location
+    title_find = pytesseract.image_to_data(img, config='--psm 3', output_type=Output.DICT)
+    info_rect = [40, 300, 120, 2000]  # Default title location
 
     found_info = False
     for i in range(len(title_find["level"])):
@@ -32,7 +32,7 @@ def find_screenshot_title(img):
         app_height = info_rect[3] * 7
         title_origin_y = info_rect[1] + info_rect[3]
         x_origin = info_rect[0] + int(1.5 * info_rect[2])
-        x_width = x_origin + int(info_rect[2]) * 8
+        x_width = x_origin + int(info_rect[2]) * 12
         app_extract = img[title_origin_y:title_origin_y + app_height, x_origin:x_width]
     else:
         # Default to initial value
@@ -46,8 +46,9 @@ def find_screenshot_title(img):
             (x, y, w, h) = (app_find['left'][i], app_find['top'][i], app_find['width'][i], app_find['height'][i])
             cv2.rectangle(app_extract, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-            if len(app_find["text"][i]) > 2:
-                title = title + " " + app_find["text"][i]
+            if len(app_find["text"][i]) > 0:
+                title = title + " " + app_find["text"][i] # No longer restricting title length as no issues seem to be occurring at the moment and some long titles were being cut off 
+                title = title.replace("|", "").strip() # Remove '|' character from titles which seems to appear at the beginning of websites
                 print("Found title: " + title)
 
     title = title.lstrip()
@@ -158,13 +159,14 @@ def find_right_anchor(d, img, img_copy):
     return found_flag, upper_right_x, upper_right_y
 
 
-def find_left_anchor(d, img, img_copy):
+def find_left_anchor(d, img, img_copy, *, skip_detections=0):
     found_flag = False
     n_boxes = len(d['level'])
     lower_left_x = -1
     lower_left_y = -1
     buffer = 25
     key_list = ["2A", "12", "AM"]
+    detection_count = 0
     maximum_offset = 100
 
     for i in range(n_boxes):
@@ -172,6 +174,9 @@ def find_left_anchor(d, img, img_copy):
         cv2.rectangle(img_copy, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
         if any(key in d['text'][i] for key in key_list):
+            detection_count += 1
+            if detection_count <= skip_detections:
+                continue
             cv2.rectangle(img, (x, y), (x + w, y + h), (255, 255, 255), -1)
 
             if not found_flag:
@@ -241,7 +246,7 @@ def extract_line(img, x0, x1, y0, y1, mode):
     sub_image = reduce_color_count(sub_image, 2)
     pixel_value = get_pixel(sub_image, -2)
     if pixel_value is None:
-        return None
+        return 0
 
     if WANT_DEBUG_SUBIMAGE:
         cv2.imshow('img', sub_image)
@@ -345,7 +350,7 @@ def slice_image(img, roi_x=1215, roi_y=384, roi_width=1078, roi_height=177):
         if VERBOSE:
             print(str(slice_index) + ", " + str((max_y * counter / rows)))
 
-        usage_at_time = np.ceil(max_y * counter / rows)
+        usage_at_time = np.floor(max_y * counter / rows)
 
         row.append(usage_at_time)
         all_times.append(usage_at_time)
@@ -583,3 +588,17 @@ def get_day_before(s):
         return day_before.strftime('%b %d')
     except ValueError:
         return None
+
+# def save_selected_images(original_image, selection_image, approximation_image, error_occurred, *args, threshold=0,**kwargs):
+#     if not error_occurred:
+#         if mse_between_images(selection_image, approximation_image) > threshold:
+#             cv2.imsave(selection_image, "./test.png")
+#             cv2.imsave(approximation_image, "./test2.png")
+#     else:
+#         cv2.imsave(original_image, "./original.png")
+#         cv2.imsave(selection_image, "./test.png")
+#         cv2.imsave(approximation_image, "./test2.png")
+
+
+
+
