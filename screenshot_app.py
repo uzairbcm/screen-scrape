@@ -81,7 +81,8 @@ class BatteryRow:
             self.date_extracted_from_file_name(),
             self.date_from_image,
             self.time_from_ui,
-        ] + self.rows
+            *self.rows,
+        ]
 
 
 class ScreenTimeRow:
@@ -117,11 +118,13 @@ class ScreenTimeRow:
             self.subject_id_extracted_from_file_path(),
             self.date_extracted_from_file_name(),
             self.app_title,
-            *self.rows
+            *self.rows,
         ]
 
 
 class ScreenshotApp(QWidget):
+    """Can adjust length_dimension for best visibility on your computer"""
+
     length_dimension = 800
 
     def __init__(self):
@@ -149,7 +152,7 @@ class ScreenshotApp(QWidget):
         self.coordinates = []
         self.folder_name = ""
         self.init_ui()
-        self.current_row = None  # BatteryRow(full_path="", file_name="", date_from_image="", time_from_ui="",rows=list(range(25)))
+        self.current_row = None
         self.last_row = None
         self.graph_issue = None
         self.title_issue = None
@@ -287,7 +290,9 @@ class ScreenshotApp(QWidget):
 
     def update_interface(self):
         if not self.graph_issue and not self.title_issue:
-            self.instruction_label.setText("Click Next/Save if the graphs match, otherwise click the upper left corner of the graph in the left image to reselect.")
+            self.instruction_label.setText(
+                "Click Next/Save if the graphs match, otherwise click the upper left corner of the graph in the left image to reselect."
+            )
             self.instruction_label.setStyleSheet("background-color:rgb(255,255,150)")
         else:
             if self.title_issue:
@@ -296,7 +301,9 @@ class ScreenshotApp(QWidget):
                 )
                 self.instruction_label.setStyleSheet("background-color:rgb(255,165,0)")  # Orange color
             if self.graph_issue:
-                self.instruction_label.setText("An graph detection issue occurred. To start reselecting, first click the upper left corner of the graph in the left image.")
+                self.instruction_label.setText(
+                    "An graph detection issue occurred. To start reselecting, first click the upper left corner of the graph in the left image."
+                )
                 self.instruction_label.setStyleSheet("background-color:rgb(255,0,0)")
 
             self.setWindowState(self.windowState() & ~QtCore.Qt.WindowMinimized | QtCore.Qt.WindowActive)
@@ -304,7 +311,6 @@ class ScreenshotApp(QWidget):
             self.show()
             self.raise_()
             self.activateWindow()
-
 
     def adjust_ui_for_image_type(self, image_type):
         if image_type == "Battery":
@@ -400,17 +406,6 @@ class ScreenshotApp(QWidget):
             self.cropped_image_label.setText("No cropped image loaded.")
             self.image_name_line_edit.setText("Image name will appear here.")
 
-    # # def update_thread(self):
-    #     self.thread = QThread()
-    #     self.worker = Worker()
-    #     self.worker.moveToThread(self.thread)
-    #     self.thread.started.connect(self.worker.run)
-    #     self.worker.finished.connect(self.thread.quit)
-    #     self.worker.finished.connect(self.worker.deleteLater)
-    #     self.thread.finished.connect(self.thread.deleteLater)
-    #     self.worker.progress.connect(self.reportProgress)
-    #     self.thread.start()
-
     def check_title(self):
         """
         Checks if the entered title is valid and updates the title_issue accordingly.
@@ -443,6 +438,7 @@ class ScreenshotApp(QWidget):
 
         if processed_image_path:
             processed_pixmap = QPixmap(processed_image_path)
+
             self.cropped_image_label.setPixmap(
                 processed_pixmap.scaled(
                     self.length_dimension,
@@ -460,13 +456,12 @@ class ScreenshotApp(QWidget):
             self.cropped_image_label.setText("No cropped image could be loaded from the selection.")
 
             self.graph_issue = True
-
             self.check_title()
-
             self.update_interface()
 
         if graph_image_path:
             processed_graph_pixmap = QPixmap(graph_image_path)
+
             self.graph_image_label.setPixmap(
                 processed_graph_pixmap.scaled(
                     self.length_dimension,
@@ -477,16 +472,12 @@ class ScreenshotApp(QWidget):
             )
 
             self.graph_issue = False
-
             self.check_title()
-
             self.update_interface()
 
         else:
             self.graph_image_label.setText("No graph could be extracted from the selection.")
-
             self.graph_issue = True
-
             self.update_interface()
 
         if processed_image_path and graph_image_path:
@@ -497,10 +488,13 @@ class ScreenshotApp(QWidget):
 
             if mse_between_loaded_images(processed_image, graph_image) > 100:
                 check_folder = "./debug/check/"
+
                 os.makedirs(check_folder, exist_ok=True)
+
                 combined_image = cv2.vconcat([processed_image, graph_image])
                 original_screenshot_image = cv2.imread(self.images[self.current_image_index])
                 combined_image = hconcat_resize([original_screenshot_image, combined_image])
+
                 cv2.imwrite(
                     f"{check_folder}/{os.path.basename(processed_image_path)}_combined.jpg",
                     combined_image,
@@ -539,7 +533,6 @@ class ScreenshotApp(QWidget):
                 print(f"Error during image loading or processing: {traceback.format_exc()}")
                 self.update(None, None, None, None)
 
-
         else:
             self.image_label.setText("No image loaded.")
             self.cropped_image_label.setText("No cropped image loaded.")
@@ -564,7 +557,12 @@ class ScreenshotApp(QWidget):
 
     def save_current_row(self):
         if self.current_row:
-            csv_path = os.path.dirname(sys.argv[0]) + "/output/" + os.path.basename(self.images[self.current_image_index].split("\\")[-3]) + " Arcascope Output.csv"
+            csv_path = (
+                os.path.dirname(sys.argv[0])
+                + "/output/"
+                + os.path.basename(self.images[self.current_image_index].split("\\")[-3])
+                + " Arcascope Output.csv"
+            )
 
             if self.mode == "Battery":
                 headers = BatteryRow.headers()
@@ -603,6 +601,7 @@ class ScreenshotApp(QWidget):
             combined_df.to_csv(csv_path, index=False)
 
             print(f"CSV file updated, {num_duplicates} complete duplicate(s) removed.")
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
