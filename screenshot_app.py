@@ -289,10 +289,10 @@ class ScreenshotApp(QWidget):
 
         screen_geo = QDesktopWidget().screenGeometry()
 
-        if os.name == "nt":
-            self.resize(int(screen_geo.width() * 0.6), int(screen_geo.height() * 0.6))
-        else:
-            self.resize(int(screen_geo.width() * 0.8), int(screen_geo.height() * 0.8))
+        # if os.name == "nt":
+        #     self.resize(int(screen_geo.width() * 0.6), int(screen_geo.height() * 0.6))
+        # else:
+        self.resize(int(screen_geo.width() * 0.8), int(screen_geo.height() * 0.8))
 
     def update_interface(self):
         if not self.graph_issue and not self.title_issue:
