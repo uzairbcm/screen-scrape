@@ -123,7 +123,9 @@ class ScreenTimeRow:
 
 
 class ScreenshotApp(QWidget):
-    """Can adjust length_dimension for best visibility on your computer"""
+    """
+    Can adjust length_dimension for best visibility on your computer
+    """
 
     length_dimension = 800
 
@@ -134,6 +136,8 @@ class ScreenshotApp(QWidget):
         self.mode = "Battery"
         self.graph_image_label = None
         self.snap_to_grid_checkbox = None
+        self.auto_process_images_checkbox = None
+        self.remove_duplicates_automatically_checkbox = None
         self.magnifier_label = None
         self.next_button = None
         self.previous_button = None
@@ -224,6 +228,8 @@ class ScreenshotApp(QWidget):
         text_fields_layout.addWidget(self.snap_to_grid_checkbox)
         self.auto_process_images_checkbox = QCheckBox("Automatically process images (until an error occurs)", self)
         text_fields_layout.addWidget(self.auto_process_images_checkbox)
+        self.remove_duplicates_automatically_checkbox = QCheckBox("Remove duplicate output CSV entries automatically based on full image path", self)
+        text_fields_layout.addWidget(self.remove_duplicates_automatically_checkbox)
         self.skip_button = QPushButton("Skip (no saving, for when the image does not have a graph at all)")
         self.skip_button.clicked.connect(self.skip_current_image)
         text_fields_layout.addWidget(self.skip_button)
@@ -580,27 +586,35 @@ class ScreenshotApp(QWidget):
                 df.to_csv(csv_path, index=False)
                 print("CSV file created with headers.")
 
-            # Create a new row to check
-            new_row_to_check = pd.DataFrame([self.current_row.to_csv_row()], columns=headers).fillna("")
-            old_df = pd.read_csv(csv_path).fillna("")
 
-            # Ensure the columns match
-            new_row_to_check = new_row_to_check[old_df.columns]
+        # Create a new row to check
+        new_row_to_check = pd.DataFrame([self.current_row.to_csv_row()], columns=headers).fillna("")
+        old_df = pd.read_csv(csv_path).fillna("")
 
-            # Concatenate old dataframe with new row to check
-            combined_df = pd.concat([old_df, new_row_to_check], axis=0)
+        # Ensure the columns match
+        new_row_to_check = new_row_to_check[old_df.columns]
 
-            # Find duplicates before dropping them
-            duplicates = combined_df.duplicated(keep="first")
+        # Concatenate old dataframe with new row to check
+        combined_df = pd.concat([old_df, new_row_to_check], axis=0)
+
+        if self.remove_duplicates_automatically_checkbox.isChecked():
+            # Define the columns to check for duplicates
+            duplicate_columns = ["Full path"]
+
+            # Find duplicates based on specific columns
+            duplicates = combined_df.duplicated(subset=duplicate_columns, keep="last")
             num_duplicates = duplicates.sum()
 
-            # Remove duplicates while preserving the order
-            combined_df = combined_df.drop_duplicates(keep="first")
+            # Remove duplicates based on specific columns while preserving the order, keeping the last updated entry
+            combined_df = combined_df.drop_duplicates(subset=duplicate_columns, keep="last")
 
-            # Save the updated dataframe back to the CSV
-            combined_df.to_csv(csv_path, index=False)
+            print(f"{num_duplicates} duplicate(s) based on full image path removed, kept the last updated entries.")
 
-            print(f"CSV file updated, {num_duplicates} complete duplicate(s) removed.")
+        # Save the updated dataframe back to the CSV
+        combined_df.to_csv(csv_path, index=False)
+
+        print(f"CSV file {csv_path} updated")
+
 
 
 if __name__ == "__main__":
