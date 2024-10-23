@@ -81,8 +81,7 @@ class BatteryRow:
             self.date_extracted_from_file_name(),
             self.date_from_image,
             self.time_from_ui,
-            *self.rows,
-        ]
+        ] + self.rows
 
 
 class ScreenTimeRow:
@@ -112,11 +111,18 @@ class ScreenTimeRow:
             return ""
 
     def to_csv_row(self):
-        return [self.full_path, self.file_name, self.subject_id_extracted_from_file_path(), self.date_extracted_from_file_name(), self.app_title, *self.rows]
+        return [
+            self.full_path,
+            self.file_name,
+            self.subject_id_extracted_from_file_path(),
+            self.date_extracted_from_file_name(),
+            self.app_title,
+            *self.rows
+        ]
 
 
 class ScreenshotApp(QWidget):
-    length_dimension = 600
+    length_dimension = 800
 
     def __init__(self):
         super().__init__()
@@ -143,7 +149,7 @@ class ScreenshotApp(QWidget):
         self.coordinates = []
         self.folder_name = ""
         self.init_ui()
-        self.current_row = None
+        self.current_row = None  # BatteryRow(full_path="", file_name="", date_from_image="", time_from_ui="",rows=list(range(25)))
         self.last_row = None
         self.graph_issue = None
         self.title_issue = None
@@ -299,6 +305,7 @@ class ScreenshotApp(QWidget):
             self.raise_()
             self.activateWindow()
 
+
     def adjust_ui_for_image_type(self, image_type):
         if image_type == "Battery":
             self.extra_label.setText("Date of first displayed time:")
@@ -393,6 +400,17 @@ class ScreenshotApp(QWidget):
             self.cropped_image_label.setText("No cropped image loaded.")
             self.image_name_line_edit.setText("Image name will appear here.")
 
+    # # def update_thread(self):
+    #     self.thread = QThread()
+    #     self.worker = Worker()
+    #     self.worker.moveToThread(self.thread)
+    #     self.thread.started.connect(self.worker.run)
+    #     self.worker.finished.connect(self.thread.quit)
+    #     self.worker.finished.connect(self.worker.deleteLater)
+    #     self.thread.finished.connect(self.thread.deleteLater)
+    #     self.worker.progress.connect(self.reportProgress)
+    #     self.thread.start()
+
     def check_title(self):
         """
         Checks if the entered title is valid and updates the title_issue accordingly.
@@ -425,7 +443,6 @@ class ScreenshotApp(QWidget):
 
         if processed_image_path:
             processed_pixmap = QPixmap(processed_image_path)
-
             self.cropped_image_label.setPixmap(
                 processed_pixmap.scaled(
                     self.length_dimension,
@@ -436,17 +453,20 @@ class ScreenshotApp(QWidget):
             )
 
             self.graph_issue = False
+
             self.update_interface()
 
         else:
             self.cropped_image_label.setText("No cropped image could be loaded from the selection.")
+
             self.graph_issue = True
+
             self.check_title()
+
             self.update_interface()
 
         if graph_image_path:
             processed_graph_pixmap = QPixmap(graph_image_path)
-
             self.graph_image_label.setPixmap(
                 processed_graph_pixmap.scaled(
                     self.length_dimension,
@@ -457,12 +477,16 @@ class ScreenshotApp(QWidget):
             )
 
             self.graph_issue = False
+
             self.check_title()
+
             self.update_interface()
 
         else:
             self.graph_image_label.setText("No graph could be extracted from the selection.")
+
             self.graph_issue = True
+
             self.update_interface()
 
         if processed_image_path and graph_image_path:
@@ -514,6 +538,7 @@ class ScreenshotApp(QWidget):
             except Exception as e:
                 print(f"Error during image loading or processing: {traceback.format_exc()}")
                 self.update(None, None, None, None)
+
 
         else:
             self.image_label.setText("No image loaded.")
@@ -578,7 +603,6 @@ class ScreenshotApp(QWidget):
             combined_df.to_csv(csv_path, index=False)
 
             print(f"CSV file updated, {num_duplicates} complete duplicate(s) removed.")
-
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
