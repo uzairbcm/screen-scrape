@@ -1,39 +1,32 @@
-import sys
 import os
 import re
-import time
+import sys
 import traceback
-import shutil
-import cv2
 
+import cv2
+import pandas as pd
+import pytesseract
+from PyQt5 import QtCore
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
-    QMainWindow,
-    QWidget,
-    QVBoxLayout,
-    QPushButton,
-    QLabel,
-    QComboBox,
-    QFileDialog,
-    QHBoxLayout,
-    QMessageBox,
-    QFrame,
     QCheckBox,
     QDesktopWidget,
-    QDialog,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QSlider,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt5 import QtCore
-from PyQt5.QtGui import QPixmap, QPainter, QFont
-from PyQt5.QtCore import Qt, QPoint
-from PyQt5.QtWidgets import QSlider
-from PyQt5.QtWidgets import QLineEdit
-from PyQt5.QtCore import QObject, QThread, pyqtSignal
-
 
 from image_processor import *  # process_image, process_image_with_grid, mse_between_loaded_images, hconcat_resize
 from magnifying_label import MagnifyingLabel
-import pandas as pd
-import pytesseract
 
 # Note: May need to be imported on Windows
 # pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
@@ -297,7 +290,7 @@ class ScreenshotApp(QWidget):
     def update_interface(self):
         if not self.graph_issue and not self.title_issue:
             self.instruction_label.setText(
-                "Click Next/Save if the graphs match, otherwise click the upper left corner of the graph in the left image to reselect."
+                "Click Next/Save if ALL the graphs match (including the one on the left), otherwise click the upper left corner of the graph in the left image to reselect."
             )
             self.instruction_label.setStyleSheet("background-color:rgb(255,255,150)")
         else:
@@ -496,15 +489,17 @@ class ScreenshotApp(QWidget):
                 check_folder = "./debug/check/"
 
                 os.makedirs(check_folder, exist_ok=True)
+                try:
+                    combined_image = cv2.vconcat([processed_image, graph_image])
+                    original_screenshot_image = cv2.imread(self.images[self.current_image_index])
+                    combined_image = hconcat_resize([original_screenshot_image, combined_image])
 
-                combined_image = cv2.vconcat([processed_image, graph_image])
-                original_screenshot_image = cv2.imread(self.images[self.current_image_index])
-                combined_image = hconcat_resize([original_screenshot_image, combined_image])
-
-                cv2.imwrite(
-                    f"{check_folder}/{os.path.basename(processed_image_path)}_combined.jpg",
-                    combined_image,
-                )
+                    cv2.imwrite(
+                        f"{check_folder}/{os.path.basename(processed_image_path)}_combined.jpg",
+                        combined_image,
+                    )
+                except Exception:
+                    print(traceback.format_exc())
 
     def show_image(self, index):
         if 0 <= index < len(self.images):
@@ -586,7 +581,6 @@ class ScreenshotApp(QWidget):
                 df.to_csv(csv_path, index=False)
                 print("CSV file created with headers.")
 
-
         # Create a new row to check
         new_row_to_check = pd.DataFrame([self.current_row.to_csv_row()], columns=headers).fillna("")
         old_df = pd.read_csv(csv_path).fillna("")
@@ -614,7 +608,6 @@ class ScreenshotApp(QWidget):
         combined_df.to_csv(csv_path, index=False)
 
         print(f"CSV file {csv_path} updated")
-
 
 
 if __name__ == "__main__":
