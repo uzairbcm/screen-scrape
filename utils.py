@@ -15,16 +15,65 @@ WANT_DEBUG_TEXT = False
 VERBOSE = True
 error_state = -1, -1, -1, -1
 
+
+def find_screenshot_total_usage(img):
+    total = ""
+
+
+    total_find = pytesseract.image_to_data(img, config="--psm 3", output_type=Output.DICT)
+    total_rect = [40, 250, 120, 350]  # Default title location
+
+    found_total = False
+    for i in range(len(total_find["level"])):
+        if "SCREEN" in total_find["text"][i]:
+            total_rect = [total_find["left"][i], total_find["top"][i], total_find["width"][i], total_find["height"][i]]
+            found_total = True
+
+    if found_total:  # If we successfully found the "total" string...
+        # Look for text underneath the total rectangle:
+        total_height = int(total_rect[3] * 6)
+        total_origin_y = total_rect[1] + total_rect[3] + 50
+        x_origin = total_rect[0] - 50
+        x_width = x_origin + int(total_rect[2]) * 3
+        total_extract = img[total_origin_y : total_origin_y + total_height, x_origin:x_width]
+        cv2.imshow("img", total_extract)
+        cv2.waitKey(0)
+    else:
+        # Default to initial value
+        total_extract = img[total_rect[0] : total_rect[2], total_rect[1] : total_rect[3]]
+
+
+    if len(total_extract) > 0:
+        # Crop just to area of app name:
+        total_find = extract_all_text(total_extract)
+
+        for i in range(len(total_find["level"])):
+            (x, y, w, h) = (total_find["left"][i], total_find["top"][i], total_find["width"][i], total_find["height"][i])
+            cv2.rectangle(total_extract, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+            if len(total_find["text"][i]) > 0:
+                total = (
+                    total + " " + total_find["text"][i]
+                )  # No longer restricting title length as no issues seem to be occurring at the moment and some long titles were being cut off
+                total = total.replace("|", "").strip()  # Remove '|' character from titles which seems to appear at the beginning of websites
+
+    print("Found total: " + total)
+
+    total = total.lstrip()
+
+    return total
+
+
 def find_screenshot_title(img):
     title = ""
 
-    title_find = pytesseract.image_to_data(img, config='--psm 3', output_type=Output.DICT)
+    title_find = pytesseract.image_to_data(img, config="--psm 3", output_type=Output.DICT)
     info_rect = [40, 300, 120, 2000]  # Default title location
 
     found_info = False
     for i in range(len(title_find["level"])):
         if "INFO" in title_find["text"][i]:
-            info_rect = [title_find['left'][i], title_find['top'][i], title_find['width'][i], title_find['height'][i]]
+            info_rect = [title_find["left"][i], title_find["top"][i], title_find["width"][i], title_find["height"][i]]
             found_info = True
 
     if found_info:  # If we successfully found the "info" string...
@@ -33,22 +82,24 @@ def find_screenshot_title(img):
         title_origin_y = info_rect[1] + info_rect[3]
         x_origin = info_rect[0] + int(1.5 * info_rect[2])
         x_width = x_origin + int(info_rect[2]) * 12
-        app_extract = img[title_origin_y:title_origin_y + app_height, x_origin:x_width]
+        app_extract = img[title_origin_y : title_origin_y + app_height, x_origin:x_width]
     else:
         # Default to initial value
-        app_extract = img[info_rect[0]:info_rect[2], info_rect[1]:info_rect[3]]
+        app_extract = img[info_rect[0] : info_rect[2], info_rect[1] : info_rect[3]]
 
     if len(app_extract) > 0:
         # Crop just to area of app name:
         app_find = extract_all_text(app_extract)
 
         for i in range(len(app_find["level"])):
-            (x, y, w, h) = (app_find['left'][i], app_find['top'][i], app_find['width'][i], app_find['height'][i])
+            (x, y, w, h) = (app_find["left"][i], app_find["top"][i], app_find["width"][i], app_find["height"][i])
             cv2.rectangle(app_extract, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
             if len(app_find["text"][i]) > 0:
-                title = title + " " + app_find["text"][i] # No longer restricting title length as no issues seem to be occurring at the moment and some long titles were being cut off 
-                title = title.replace("|", "").strip() # Remove '|' character from titles which seems to appear at the beginning of websites
+                title = (
+                    title + " " + app_find["text"][i]
+                )  # No longer restricting title length as no issues seem to be occurring at the moment and some long titles were being cut off
+                title = title.replace("|", "").strip()  # Remove '|' character from titles which seems to appear at the beginning of websites
                 print("Found title: " + title)
 
     title = title.lstrip()
@@ -65,7 +116,7 @@ def extract_all_text(image):
 
     # Run multiple passes at catching text with OCR; can expand range
     for i in range(13, 14):
-        dictionary_temp = pytesseract.image_to_data(image, config='--psm ' + str(i), output_type=Output.DICT)
+        dictionary_temp = pytesseract.image_to_data(image, config="--psm " + str(i), output_type=Output.DICT)
         dictionary = dictionary_temp | dictionary
 
     return dictionary
@@ -86,7 +137,7 @@ def adjust_contrast_brightness(img, contrast: float = 1.0, brightness: int = 0):
 
 
 def get_pixel(img, arg):
-    '''Get the dominant pixel in the image'''
+    """Get the dominant pixel in the image"""
     unq, count = np.unique(img.reshape(-1, img.shape[-1]), axis=0, return_counts=True)
     sort = np.argsort(count)
     sorted_unq = unq[sort]
@@ -99,7 +150,7 @@ def get_pixel(img, arg):
 
 def find_right_anchor(d, img, img_copy):
     found_flag = False
-    n_boxes = len(d['level'])
+    n_boxes = len(d["level"])
     upper_right_x = -1
     upper_right_y = -1
     buffer = 25
@@ -107,18 +158,14 @@ def find_right_anchor(d, img, img_copy):
     key_list = ["60"]
 
     for i in range(n_boxes):
-        (x, y, w, h) = (d['left'][i], d['top'][i], d['width'][i], d['height'][i])
+        (x, y, w, h) = (d["left"][i], d["top"][i], d["width"][i], d["height"][i])
         cv2.rectangle(img_copy, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-        if any(key in d['text'][i] for key in key_list):
+        if any(key in d["text"][i] for key in key_list):
             if not found_flag:
                 found_flag = True
                 if WANT_DEBUG_LINE_FIND:
-                    cv2.rectangle(img_copy,
-                                  (x - buffer, y),
-                                  (x, y + buffer),
-                                  (255, 0, 3),
-                                  2)
+                    cv2.rectangle(img_copy, (x - buffer, y), (x, y + buffer), (255, 0, 3), 2)
                     show_until_destroyed("Image", img_copy)
 
                 line_row = None
@@ -128,31 +175,20 @@ def find_right_anchor(d, img, img_copy):
                 print("Moving up to search for right anchor...")
                 moving_index = 0
                 while line_row is None and moving_index < maximum_offset:
-                    line_row = extract_line(img,
-                                            x - buffer,
-                                            x,
-                                            y - moving_index,
-                                            y - moving_index + h + buffer, "horizontal")
+                    line_row = extract_line(img, x - buffer, x, y - moving_index, y - moving_index + h + buffer, "horizontal")
                     moving_index = moving_index + 1
-                upper_right_y = y + line_row - moving_index
+                upper_right_y = y + line_row - moving_index + 1
 
                 #  Inch left until you find the grid...
                 print("Moving left to search for right anchor...")
                 moving_index = 0
                 while line_col is None and moving_index < maximum_offset:
-                    line_col = extract_line(img,
-                                            x - buffer - moving_index,
-                                            x - moving_index,
-                                            y,
-                                            y + h + buffer, "vertical")
+                    line_col = extract_line(img, x - buffer - moving_index, x - moving_index, y, y + h + buffer, "vertical")
                     moving_index = moving_index + 1
-                upper_right_x = x - buffer + line_col - moving_index
+                upper_right_x = x - buffer + line_col - moving_index + 1
 
                 if WANT_DEBUG_LINE_FIND:
-                    cv2.rectangle(img_copy,
-                                  (upper_right_x, upper_right_y),
-                                  (upper_right_x + buffer, upper_right_y + buffer),
-                                  (0, 0, 3), 2)
+                    cv2.rectangle(img_copy, (upper_right_x, upper_right_y), (upper_right_x + buffer, upper_right_y + buffer), (0, 0, 3), 2)
 
                     show_until_destroyed("Image", img_copy)
 
@@ -161,7 +197,7 @@ def find_right_anchor(d, img, img_copy):
 
 def find_left_anchor(d, img, img_copy, *, skip_detections=0):
     found_flag = False
-    n_boxes = len(d['level'])
+    n_boxes = len(d["level"])
     lower_left_x = -1
     lower_left_y = -1
     buffer = 25
@@ -170,10 +206,10 @@ def find_left_anchor(d, img, img_copy, *, skip_detections=0):
     maximum_offset = 100
 
     for i in range(n_boxes):
-        (x, y, w, h) = (d['left'][i], d['top'][i], d['width'][i], d['height'][i])
+        (x, y, w, h) = (d["left"][i], d["top"][i], d["width"][i], d["height"][i])
         cv2.rectangle(img_copy, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-        if any(key in d['text'][i] for key in key_list):
+        if any(key in d["text"][i] for key in key_list):
             detection_count += 1
             if detection_count <= skip_detections:
                 continue
@@ -183,10 +219,7 @@ def find_left_anchor(d, img, img_copy, *, skip_detections=0):
                 found_flag = True
 
                 if WANT_DEBUG_LINE_FIND:
-                    cv2.rectangle(img_copy,
-                                  (x - buffer, y - buffer),
-                                  (x + buffer + w, y + buffer + h),
-                                  (255, 0, 3), 2)
+                    cv2.rectangle(img_copy, (x - buffer, y - buffer), (x + buffer + w, y + buffer + h), (255, 0, 3), 2)
                     show_until_destroyed("Image", img_copy)
 
                 line_row = None
@@ -196,12 +229,7 @@ def find_left_anchor(d, img, img_copy, *, skip_detections=0):
                 print("Moving up to search for left anchor...")
                 moving_index = 0
                 while line_row is None and moving_index < maximum_offset:
-                    line_row = extract_line(img,
-                                            x - buffer,
-                                            x + w + buffer,
-                                            y - moving_index - buffer,
-                                            y - moving_index + buffer,
-                                            "horizontal")
+                    line_row = extract_line(img, x - buffer, x + w + buffer, y - moving_index - buffer, y - moving_index + buffer, "horizontal")
 
                     moving_index = moving_index + 1
                 lower_left_y = y - buffer + line_row - moving_index
@@ -210,24 +238,13 @@ def find_left_anchor(d, img, img_copy, *, skip_detections=0):
                 print("Moving left to search for left anchor...")
                 moving_index = 0
                 while line_col is None and moving_index < maximum_offset:
-                    line_col = extract_line(img,
-                                            x - moving_index - buffer,
-                                            x - moving_index + buffer,
-                                            y - buffer,
-                                            y,
-                                            "vertical")
+                    line_col = extract_line(img, x - moving_index - buffer, x - moving_index + buffer, y - buffer, y, "vertical")
                     moving_index = moving_index + 1
                 lower_left_x = x - buffer + line_col - moving_index
 
                 if WANT_DEBUG_LINE_FIND:
-                    cv2.rectangle(img_copy,
-                                  (x - 2 * buffer, y - buffer),
-                                  (x - buffer, y + h + buffer),
-                                  (0, 255, 255), 2)
-                    cv2.rectangle(img_copy,
-                                  (lower_left_x, lower_left_y),
-                                  (lower_left_x + buffer, lower_left_y + buffer),
-                                  (255, 0, 3), 2)
+                    cv2.rectangle(img_copy, (x - 2 * buffer, y - buffer), (x - buffer, y + h + buffer), (0, 255, 255), 2)
+                    cv2.rectangle(img_copy, (lower_left_x, lower_left_y), (lower_left_x + buffer, lower_left_y + buffer), (255, 0, 3), 2)
                     show_until_destroyed("Image", img_copy)
 
     return found_flag, lower_left_x, lower_left_y
@@ -249,7 +266,7 @@ def extract_line(img, x0, x1, y0, y1, mode):
         return 0
 
     if WANT_DEBUG_SUBIMAGE:
-        cv2.imshow('img', sub_image)
+        cv2.imshow("img", sub_image)
         cv2.waitKey(0)
     if mode == "horizontal":
         shape = np.shape(sub_image)
@@ -274,17 +291,17 @@ def extract_line(img, x0, x1, y0, y1, mode):
 
             if col_score > 0.25 * shape[0]:  # Threshold set by inspection; can be modified
                 return j
+        return None
+    return None
 
 
 def is_close(pixel_1, pixel_2, thresh=1):
-    '''Decide if two pixels are close enough'''
-    if np.sum(np.abs(pixel_1 - pixel_2)) <= thresh * len(pixel_1):
-        return True
-    return False
+    """Decide if two pixels are close enough"""
+    return np.sum(np.abs(pixel_1 - pixel_2)) <= thresh * len(pixel_1)
 
 
 def reduce_color_count(img, num_colors):
-    '''Reduce the color count to help with aliasing'''
+    """Reduce the color count to help with aliasing"""
     for i in range(num_colors):
         img[(img >= i * 255 / num_colors) & (img < (i + 1) * 255 / num_colors)] = i * 255 / (num_colors - 1)
     return img
@@ -326,14 +343,12 @@ def slice_image(img, roi_x=1215, roi_y=384, roi_width=1078, roi_height=177):
     for slice_index in range(0, num_slice):
         # Slice of image, corresponds to time bars
         slice_x = roi_x + int(slice_index * slice_width_float)
-        slice_of_image = img[roi_y:roi_y + roi_height, slice_x:int(roi_x + (slice_index + 1) * slice_width_float)]
+        slice_of_image = img[roi_y : roi_y + roi_height, slice_x : int(roi_x + (slice_index + 1) * slice_width_float)]
 
-        cv2.rectangle(img_copy, (slice_x, roi_y),
-                      (int(roi_x + (slice_index + 1) * slice_width_float), roi_y + roi_height),
-                      (0, 255, 0), 2)
+        cv2.rectangle(img_copy, (slice_x, roi_y), (int(roi_x + (slice_index + 1) * slice_width_float), roi_y + roi_height), (0, 255, 0), 2)
 
         if WANT_DEBUG_SLICE:
-            show_until_destroyed('Slice of image', slice_of_image)
+            show_until_destroyed("Slice of image", slice_of_image)
 
         # Slice down the middle
         true_slice = slice_of_image[:, int(slice_width_float / 2), :]
@@ -356,7 +371,7 @@ def slice_image(img, roi_x=1215, roi_y=384, roi_width=1078, roi_height=177):
         all_times.append(usage_at_time)
 
     if WANT_DEBUG_SLICE:
-        cv2.imshow('Grid ROI', img)
+        cv2.imshow("Grid ROI", img)
         cv2.waitKey(0)
 
     row.append(np.sum(all_times))
@@ -387,11 +402,7 @@ def snap_to_grid(img, x, y, w, h):
     while line_row is None and moving_index < maximum_offset:
         print("Snapping to grid by looking down...")
         # Start buffer above the current point and scoot down
-        line_row = extract_line_snap_to_grid(img,
-                                             x,
-                                             x + buffer,
-                                             y - buffer + moving_index,
-                                             y + moving_index, "horizontal")
+        line_row = extract_line_snap_to_grid(img, x, x + buffer, y - buffer + moving_index, y + moving_index, "horizontal")
         moving_index = moving_index + 1
 
     if line_row is None:
@@ -405,11 +416,7 @@ def snap_to_grid(img, x, y, w, h):
     while line_col is None and moving_index < maximum_offset:
         # Start buffer to the left of the point
         print("Snapping to grid by looking right...")
-        line_col = extract_line_snap_to_grid(img,
-                                             x - buffer + moving_index,
-                                             x + moving_index,
-                                             y,
-                                             y + buffer, "vertical")
+        line_col = extract_line_snap_to_grid(img, x - buffer + moving_index, x + moving_index, y, y + buffer, "vertical")
         moving_index = moving_index + 1
     if line_col is None:
         print("Returning error state")
@@ -417,8 +424,7 @@ def snap_to_grid(img, x, y, w, h):
 
     upper_left_x = x - buffer + line_col + moving_index
 
-    grid_color = img[upper_left_y,
-                 upper_left_x - 1, :]
+    grid_color = img[upper_left_y, upper_left_x - 1, :]
 
     test = remove_all_but(img.copy(), grid_color, 120)
     # show_until_destroyed("SHOWING WHAT HAPPENS WHEN WE REMOVE ALL", test)
@@ -430,16 +436,23 @@ def snap_to_grid(img, x, y, w, h):
     while line_row is None and moving_index < maximum_offset:
         # Look at the gap between the second to last and last hour of the day
         print("Snapping to grid by looking down... (bottom right)")
-        line_row = extract_line_snap_to_grid(test,
-                                             x + int(23 * w / 24 - buffer / 2),
-                                             x + int(23 * w / 24 + buffer / 2),
-                                             y + h + moving_index - buffer,
-                                             y + h + moving_index,
-                                             "horizontal",
-                                             grid_color)
+        line_row = extract_line_snap_to_grid(
+            test,
+            x + int(23 * w / 24 - buffer / 2),
+            x + int(23 * w / 24 + buffer / 2),
+            y + h + moving_index - buffer,
+            y + h + moving_index,
+            "horizontal",
+            grid_color,
+        )
 
-        cv2.rectangle(test, (x + int(23 * w / 24 - buffer / 2), y + h + moving_index - buffer),
-                      (x + int(23 * w / 24 + buffer / 2), y + h + moving_index), (0, 255, 0), 2)
+        cv2.rectangle(
+            test,
+            (x + int(23 * w / 24 - buffer / 2), y + h + moving_index - buffer),
+            (x + int(23 * w / 24 + buffer / 2), y + h + moving_index),
+            (0, 255, 0),
+            2,
+        )
         # show_until_destroyed("test",test)
 
         moving_index = moving_index + 1
@@ -454,13 +467,7 @@ def snap_to_grid(img, x, y, w, h):
     while line_col is None and moving_index < maximum_offset:
         print("Snapping to grid by looking right... (right)")
 
-        line_col = extract_line_snap_to_grid(test,
-                                             x + w + moving_index - buffer,
-                                             x + w + moving_index,
-                                             y + h - buffer,
-                                             y + h,
-                                             "vertical",
-                                             grid_color)
+        line_col = extract_line_snap_to_grid(test, x + w + moving_index - buffer, x + w + moving_index, y + h - buffer, y + h, "vertical", grid_color)
         moving_index = moving_index + 1
     if line_col is None:
         print("Returning error state")
@@ -488,7 +495,7 @@ def extract_line_snap_to_grid(img, x0, x1, y0, y1, mode, grid_color=None):
             return None
 
     if WANT_DEBUG_SUBIMAGE_SNAP or grid_color is not None:
-        cv2.imshow('img', sub_image)
+        cv2.imshow("img", sub_image)
         cv2.waitKey(0)
 
     count_color = pixel_value
@@ -516,10 +523,12 @@ def extract_line_snap_to_grid(img, x0, x1, y0, y1, mode, grid_color=None):
 
             if col_score > 0.3 * shape[0]:
                 return j
+        return None
+    return None
 
 
 def clean_date_string(date_string):
-    cleaned_string = re.sub(r'[^a-zA-Z0-9\s]', '', date_string)
+    cleaned_string = re.sub(r"[^a-zA-Z0-9\s]", "", date_string)
     return cleaned_string
 
 
@@ -527,9 +536,8 @@ def get_text(img, roi_x, roi_y, roi_width, roi_height):
     text_y_start = roi_y + int(roi_height * 1.23)
     text_y_end = roi_y + int(roi_height * 1.46)
     text_x_width = int(roi_width / 8)
-    first_location = img[text_y_start:text_y_end, roi_x:(roi_x + text_x_width)]
-    second_location = img[text_y_start:text_y_end,
-                      roi_x + int(roi_width / 2):(roi_x + int(roi_width / 2) + text_x_width)]
+    first_location = img[text_y_start:text_y_end, roi_x : (roi_x + text_x_width)]
+    second_location = img[text_y_start:text_y_end, roi_x + int(roi_width / 2) : (roi_x + int(roi_width / 2) + text_x_width)]
 
     if WANT_DEBUG_TEXT:
         cv2.imshow("First text location", first_location)
@@ -553,7 +561,7 @@ def extract_date(image):
 
 def is_date(s):
     try:
-        datetime.datetime.strptime(s, '%b %d')
+        datetime.datetime.strptime(s, "%b %d")
         return True
     except ValueError:
         return False
@@ -573,7 +581,7 @@ def remove_line_color(img):
 
 
 def darken_non_white(img):
-    '''Darken the non-white pixels in the bars'''
+    """Darken the non-white pixels in the bars"""
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     ret, thresh = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY)
@@ -583,11 +591,12 @@ def darken_non_white(img):
 
 def get_day_before(s):
     try:
-        dt = datetime.datetime.strptime(s, '%b %d')
+        dt = datetime.datetime.strptime(s, "%b %d")
         day_before = dt - datetime.timedelta(days=1)
-        return day_before.strftime('%b %d')
+        return day_before.strftime("%b %d")
     except ValueError:
         return None
+
 
 # def save_selected_images(original_image, selection_image, approximation_image, error_occurred, *args, threshold=0,**kwargs):
 #     if not error_occurred:
@@ -598,7 +607,3 @@ def get_day_before(s):
 #         cv2.imsave(original_image, "./original.png")
 #         cv2.imsave(selection_image, "./test.png")
 #         cv2.imsave(approximation_image, "./test2.png")
-
-
-
-

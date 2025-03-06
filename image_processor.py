@@ -64,16 +64,18 @@ def process_image_with_grid(filename, upper_left, lower_right, is_battery=False,
         if is_battery:
             print("Extracting time...")
             title = find_time(img_copy, roi_x, roi_y, roi_width, roi_height)
+            total = "N/A"
         else:
             print("Extracting title...")
             title = find_screenshot_title(img)
+            total = find_screenshot_total_usage(img)
 
         filename, row, graph_filename = save_image(filename, roi_x, roi_y, roi_width, roi_height, is_battery)
-        return filename, graph_filename, row, title
+        return filename, graph_filename, row, title, total
 
     except ImageProcessingError as e:
         print(f"Error: {traceback.format_exc()}")
-        return None, None, list(range(25)), ""
+        return None, None, list(range(25)), "", ""
 
 
 def process_image(filename, is_battery=False, snap_to_grid=False):
@@ -140,12 +142,14 @@ def apply_processing(filename, img, is_battery, snap_to_grid):
     # Determine title based on battery status
     if is_battery:
         title = find_time(img_copy, roi_x, roi_y, roi_width, roi_height)
+        total = "N/A"
     else:
         title = find_screenshot_title(img)
+        total = find_screenshot_total_usage(img)
 
     # Save the processed image and return
     filename, row, graph_filename = save_image(filename, roi_x, roi_y, roi_width, roi_height, is_battery)
-    return filename, graph_filename, row, title
+    return filename, graph_filename, row, title, total
     # except Exception:
     #     print(f"Processing failed: {traceback.format_exc()}")
     #     return None, None, [], ""
@@ -160,7 +164,7 @@ def find_time(img, roi_x, roi_y, roi_width, roi_height):
 def prepare_image_chunks(img):
     img_chunk_num = 3
     img_width, img_height = img.shape[1], img.shape[0]
-    top_removal = int(img_height * 0.10)  # Removing top 10% of the image to minimize risk of failed grid detection
+    top_removal = int(img_height * 0.05)  # Removing top 10% of the image to minimize risk of failed grid detection
 
     # Split image into left and right for anchor detection
     img_left = img[:, : int(img_width / img_chunk_num)]
@@ -216,46 +220,56 @@ def save_image(filename, roi_x, roi_y, roi_width, roi_height, is_battery):
     print("Saving processed image...")
     selection_save_path = save_processed_image(img, roi_x, roi_y, roi_width, roi_height, filename, scale_amount)
 
-    plt.close()
-    fig, axs = plt.subplots(2, 1, figsize=(8, 4.5))
-
-    # Load the processed image and display it in the first subplot
-    processed_img = cv2.imread(selection_save_path)
-    processed_img = np.flip(processed_img, axis=2).copy()
-    axs[0].imshow(processed_img)
-    axs[0].axis("off")  # Hide axes
-
-    selection_extent = axs[0].get_tightbbox(fig.canvas.get_renderer()).transformed(fig.dpi_scale_trans.inverted())
-
-    plt.savefig(selection_save_path, bbox_inches=selection_extent, pad_inches=0)
-
-    x = range(len(row[:-1]))
-    height = row[:-1]
-    axs[1].bar(np.array(x) + 0.5, height)
-    axs[1].set_ylim([0, 60])
-    axs[1].set_xlim([0, 24])
-
-    # axs[1].grid(True)
-    axs[1].set_xticks(range(0, len(row[:-1]), 6))  # Set x-ticks every 6 units
-    # axs[1].set_yticks(range(0, 61, 15))  # Set y-ticks every 15 units
-    axs[1].set_xticklabels([])
-    # axs[1].set_yticklabels([])
-
-    axs[1].grid(which="both", axis="x", linestyle="--", linewidth=0.5)
-
+    # Create debug directory
     debug_folder = "debug"
     os.makedirs(debug_folder, exist_ok=True)
 
+    # Define path for the graph image
     graph_save_path = os.path.join(debug_folder, "graph_" + os.path.basename(filename))
     graph_save_path = graph_save_path.replace(".jfif", ".jpg")
 
-    graph_extent = axs[1].get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+    # Create a separate figure just for the bar chart
+    plt.figure(figsize=(8, 2))
 
-    plt.savefig(graph_save_path, bbox_inches=graph_extent, pad_inches=0)
+    # Format and display the total in the middle subplot
+    total_minutes = row[-1]
+    hours = int(total_minutes // 60)
+    minutes = int(total_minutes % 60)
 
-    # combined_save_path = os.path.join(debug_folder, "combined_" + os.path.basename(filename))
+    total_text = f"{hours}h {minutes}m" if hours > 0 else f"{minutes}m"
 
-    # plt.savefig(combined_save_path, bbox_inches='tight', pad_inches=0)
+    ax = plt.gca()
+
+    plt.xlabel(f"Calculated Total: {total_text}", ha="center", va="center", fontsize=8, fontweight="bold")
+
+    # Create the bar chart
+    x = range(len(row[:-1]))
+    height = row[:-1]
+    bars = plt.bar(np.array(x) + 0.5, height)
+    plt.ylim([0, 60])
+    plt.xlim([0, 24])
+
+    # Set up x-ticks for every hour with minute values
+    tick_positions = np.array(range(24)) + 0.5
+    tick_labels = [f"{int(x)}" for x in height]
+
+    # Set the minute value labels on the x-axis (horizontal)
+    plt.xticks(tick_positions, tick_labels, fontsize=8)
+
+    # Remove y-axis labels and ticks
+    plt.yticks([])
+    ax.yaxis.set_visible(False)
+
+    # Keep only the bottom x-axis visible
+    for spine in ["top", "right", "left"]:
+        ax.spines[spine].set_visible(False)
+
+    # Add subtle grid lines for readability
+    plt.grid(which="both", axis="x", linestyle="--", linewidth=0.5, alpha=0.3)
+
+    # Save just the graph image
+    plt.savefig(graph_save_path, bbox_inches="tight", pad_inches=0)
+    plt.close()
 
     return selection_save_path, row, graph_save_path
 

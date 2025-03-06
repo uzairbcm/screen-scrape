@@ -125,7 +125,8 @@ class ScreenshotApp(QWidget):
     def __init__(self):
         super().__init__()
         self.time_mapping = None
-        self.extra_label = None
+        self.extracted_text_label = None
+        self.extracted_total_label = None
         self.mode = "Battery"
         self.graph_image_label = None
         self.snap_to_grid_checkbox = None
@@ -137,7 +138,7 @@ class ScreenshotApp(QWidget):
         self.skip_button = None
         self.time_label = None
         self.time_slider = None
-        self.extra_label_edit = None
+        self.extracted_text_edit = None
         self.image_name_line_edit = None
         self.cropped_image_label = None
         self.image_label = None
@@ -212,18 +213,25 @@ class ScreenshotApp(QWidget):
         self.image_name_line_edit = QLineEdit("Image_Name_Placeholder.png")
         text_fields_layout.addWidget(self.image_name_line_edit)
 
-        self.extra_label = QLabel("App Name:")
-        text_fields_layout.addWidget(self.extra_label)
-        self.extra_label_edit = QLineEdit("")
-        self.extra_label_edit.textEdited.connect(self.check_title)
-        text_fields_layout.addWidget(self.extra_label_edit)
+        self.extracted_text_label = QLabel("Extracted Title/App Name:")
+        text_fields_layout.addWidget(self.extracted_text_label)
+        self.extracted_text_edit = QLineEdit("")
+        self.extracted_text_edit.textEdited.connect(self.check_title)
+        text_fields_layout.addWidget(self.extracted_text_edit)
+
+        self.extracted_total_label = QLabel("Extracted Total: ")
+        text_fields_layout.addWidget(self.extracted_total_label)
+
         self.snap_to_grid_checkbox = QCheckBox("Automatically snap to grid", self)
         text_fields_layout.addWidget(self.snap_to_grid_checkbox)
+
         self.auto_process_images_checkbox = QCheckBox("Automatically process images (until an error occurs)", self)
         text_fields_layout.addWidget(self.auto_process_images_checkbox)
-        self.remove_duplicates_automatically_checkbox = QCheckBox("Remove duplicate output CSV entries automatically based on full image path", self)
+
+        self.remove_duplicates_automatically_checkbox = QCheckBox("Remove duplicates in csv output, keeping last saved (based on image path)", self)
         text_fields_layout.addWidget(self.remove_duplicates_automatically_checkbox)
-        self.skip_button = QPushButton("Skip (no saving, for when the image does not have a graph at all)")
+
+        self.skip_button = QPushButton("Skip (no saving)")
         self.skip_button.clicked.connect(self.skip_current_image)
         text_fields_layout.addWidget(self.skip_button)
 
@@ -313,13 +321,13 @@ class ScreenshotApp(QWidget):
 
     def adjust_ui_for_image_type(self, image_type):
         if image_type == "Battery":
-            self.extra_label.setText("Date of first displayed time:")
-            self.extra_label_edit.show()
+            self.extracted_text_label.setText("Date of first displayed time:")
+            self.extracted_text_edit.show()
             self.slider.show()
             self.time_label.show()
         elif image_type == "ScreenTime":
-            self.extra_label.setText("Extracted app name:")
-            self.extra_label_edit.show()
+            self.extracted_text_label.setText("Extracted Title/App Name:")
+            self.extracted_text_edit.show()
             self.slider.hide()
             self.time_label.hide()
             self.instruction_label.show()
@@ -366,7 +374,7 @@ class ScreenshotApp(QWidget):
         print(f"Display width: {display_width}, Display height: {display_height}")
 
         print("Processing image from clicks...")
-        processed_image_path, graph_image_path, row, title = process_image_with_grid(
+        processed_image_path, graph_image_path, row, title, total = process_image_with_grid(
             image_path,
             true_upper_left,
             true_lower_right,
@@ -409,21 +417,22 @@ class ScreenshotApp(QWidget):
         """
         Checks if the entered title is valid and updates the title_issue accordingly.
         """
-        title = self.extra_label_edit.text()
+        title = self.extracted_text_edit.text()
         if title in self.invalid_title_list:
             self.title_issue = True
         else:
             self.title_issue = False
             self.update_interface()
 
-    def update(self, title, row, processed_image_path, graph_image_path):
-        self.extra_label_edit.setText(title)
+    def update(self, title, total, row, processed_image_path, graph_image_path):
+        self.extracted_text_edit.setText(title)
+        self.extracted_total_label.setText(f"Extracted Total: {total}")
 
         if self.mode == "Battery":
             self.current_row = BatteryRow(
                 full_path=self.images[self.current_image_index],
                 file_name=self.image_name_line_edit.text(),
-                date_from_image=self.extra_label_edit.text(),
+                date_from_image=self.extracted_text_edit.text(),
                 time_from_ui=self.time_mapping[self.slider.value()],
                 rows=row,
             )
@@ -431,7 +440,7 @@ class ScreenshotApp(QWidget):
             self.current_row = ScreenTimeRow(
                 full_path=self.images[self.current_image_index],
                 file_name=self.image_name_line_edit.text(),
-                app_title=self.extra_label_edit.text(),
+                app_title=self.extracted_text_edit.text(),
                 rows=row,
             )
 
@@ -517,13 +526,13 @@ class ScreenshotApp(QWidget):
             self.current_image_index = index
 
             try:
-                processed_image_path, graph_image_path, row, title = process_image(
+                processed_image_path, graph_image_path, row, title, total = process_image(
                     image_path,
                     self.mode == "Battery",
                     self.snap_to_grid_checkbox.isChecked(),
                 )
 
-                self.update(title, row, processed_image_path, graph_image_path)
+                self.update(title, total, row, processed_image_path, graph_image_path)
 
                 """These lines are what causes the app to loop automatically over images until an error occurs"""
                 if self.auto_process_images_checkbox.isChecked():
@@ -532,7 +541,7 @@ class ScreenshotApp(QWidget):
 
             except Exception as e:
                 print(f"Error during image loading or processing: {traceback.format_exc()}")
-                self.update(None, None, None, None)
+                self.update(None, None, None, None, None)
 
         else:
             self.image_label.setText("No image loaded.")
@@ -567,11 +576,11 @@ class ScreenshotApp(QWidget):
 
             if self.mode == "Battery":
                 headers = BatteryRow.headers()
-                self.current_row.date_from_image = self.extra_label_edit.text()
+                self.current_row.date_from_image = self.extracted_text_edit.text()
                 self.current_row.time_from_ui = self.time_mapping[self.slider.value()]
             elif self.mode == "ScreenTime":
                 headers = ScreenTimeRow.headers()
-                self.current_row.app_title = self.extra_label_edit.text()
+                self.current_row.app_title = self.extracted_text_edit.text()
             else:
                 raise ValueError(f"Invalid mode: {self.mode}")
 
