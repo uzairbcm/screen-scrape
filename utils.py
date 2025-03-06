@@ -36,8 +36,6 @@ def find_screenshot_total_usage(img):
         x_origin = total_rect[0] - 50
         x_width = x_origin + int(total_rect[2]) * 3
         total_extract = img[total_origin_y : total_origin_y + total_height, x_origin:x_width]
-        cv2.imshow("img", total_extract)
-        cv2.waitKey(0)
     else:
         # Default to initial value
         total_extract = img[total_rect[0] : total_rect[2], total_rect[1] : total_rect[3]]
