@@ -132,6 +132,7 @@ class ScreenshotApp(QWidget):
         self.snap_to_grid_checkbox = None
         self.auto_process_images_checkbox = None
         self.remove_duplicates_automatically_checkbox = None
+        self.skip_daily_usage_checkbox = None
         self.magnifier_label = None
         self.next_button = None
         self.previous_button = None
@@ -160,7 +161,6 @@ class ScreenshotApp(QWidget):
     def init_ui(self):
         self.setWindowTitle("Screenshot Slideshow")
         self.setStyleSheet("QWidget { font-size: 14px; } QPushButton { font-weight: bold; }")
-        #
         layout = QVBoxLayout(self)
 
         btn_battery = QPushButton("Select Folder of Battery Images")
@@ -222,21 +222,29 @@ class ScreenshotApp(QWidget):
 
         self.extracted_total_label = QLabel("Extracted Total: ")
         text_fields_layout.addWidget(self.extracted_total_label)
+        self.extracted_total_label.hide()
 
         self.extracted_total_image = QLabel("No total image")
         self.extracted_total_image.setAlignment(Qt.AlignCenter)
-        self.extracted_total_image.setMinimumHeight(50)  # Ensure it has some minimum height
-        self.extracted_total_image.setFrameShape(QFrame.Box)  # Add a frame around it
+        self.extracted_total_image.setMinimumHeight(50)
+        self.extracted_total_image.setFrameShape(QFrame.Box)
         text_fields_layout.addWidget(self.extracted_total_image)
+        self.extracted_total_image.hide()
 
         self.snap_to_grid_checkbox = QCheckBox("Automatically snap to grid", self)
         text_fields_layout.addWidget(self.snap_to_grid_checkbox)
 
         self.auto_process_images_checkbox = QCheckBox("Automatically process images (minimized, until an error occurs)", self)
         text_fields_layout.addWidget(self.auto_process_images_checkbox)
+        self.auto_process_images_checkbox.hide()
 
         self.remove_duplicates_automatically_checkbox = QCheckBox("Remove duplicates in csv output, keeping last saved (based on image path)", self)
         text_fields_layout.addWidget(self.remove_duplicates_automatically_checkbox)
+
+        self.skip_daily_usage_checkbox = QCheckBox("Skip daily usage images", self)
+        self.skip_daily_usage_checkbox.setToolTip("If checked, images with 'Daily Total' title will be automatically skipped")
+        text_fields_layout.addWidget(self.skip_daily_usage_checkbox)
+        self.skip_daily_usage_checkbox.hide()
 
         self.skip_button = QPushButton("Skip (no saving)")
         self.skip_button.clicked.connect(self.skip_current_image)
@@ -333,15 +341,24 @@ class ScreenshotApp(QWidget):
     def adjust_ui_for_image_type(self, image_type):
         if image_type == "Battery":
             self.extracted_text_label.setText("Date of first displayed time:")
-            self.extracted_text_edit.show()
             self.slider.show()
-            self.time_label.show()
+            self.time_label.hide()
+            self.instruction_label.hide()
+            self.extracted_total_label.hide()
+            self.extracted_total_image.hide()
+            self.auto_process_images_checkbox.hide()
+            self.remove_duplicates_automatically_checkbox.hide()
+            self.skip_daily_usage_checkbox.hide()
         elif image_type == "ScreenTime":
             self.extracted_text_label.setText("Extracted Title/App Name:")
-            self.extracted_text_edit.show()
             self.slider.hide()
             self.time_label.hide()
             self.instruction_label.show()
+            self.extracted_total_label.show()
+            self.extracted_total_image.show()
+            self.auto_process_images_checkbox.show()
+            self.remove_duplicates_automatically_checkbox.show()
+            self.skip_daily_usage_checkbox.show()
 
     def capture_click(self, event):
         x = event.pos().x()
@@ -599,6 +616,18 @@ class ScreenshotApp(QWidget):
 
                 self.update_(title, total, row, processed_image_path, graph_image_path, total_image_path)
 
+                if (
+                    self.mode == "ScreenTime"
+                    and self.skip_daily_usage_checkbox.isChecked()
+                    and title == "Daily Total"
+                    and not self.graph_issue
+                    and not self.title_issue
+                    and not self.total_issue
+                ):
+                    print(f"Skipping Daily Total image: {image_path}")
+                    self.skip_current_image()
+                    return
+
                 """These lines are what causes the app to loop automatically over images until an error occurs"""
                 if self.auto_process_images_checkbox.isChecked() and not self.graph_issue and not self.title_issue and not self.total_issue:
                     self.showMinimized()
@@ -697,6 +726,8 @@ class ScreenshotApp(QWidget):
             combined_df = combined_df.drop_duplicates(subset=duplicate_columns, keep="last")
 
             print(f"{num_duplicates} duplicate(s) based on full image path removed, kept the last updated entries.")
+
+        os.makedirs(os.path.dirname(csv_path), exist_ok=True)
 
         # Save the updated dataframe back to the CSV
         combined_df.to_csv(csv_path, index=False)
