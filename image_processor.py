@@ -188,13 +188,17 @@ def calculate_roi(lower_left_x, upper_right_y, roi_width, roi_height, snap_to_gr
         lower_left_x, upper_right_y, roi_width, roi_height = snap_to_grid(img, lower_left_x, upper_right_y, roi_width, roi_height)
 
     if lower_left_x < 0:
-        raise ValueError(f"Invalid ROI lower left x coordinate: {lower_left_x}")
+        msg = f"Invalid ROI lower left x coordinate: {lower_left_x}"
+        raise ValueError(msg)
     elif upper_right_y < 0:
-        raise ValueError(f"Invalid ROI upper right y coordinate: {upper_right_y}")
+        msg = f"Invalid ROI upper right y coordinate: {upper_right_y}"
+        raise ValueError(msg)
     elif roi_width < 0:
-        raise ValueError(f"Invalid ROI width value: {roi_width}")
+        msg = f"Invalid ROI width value: {roi_width}"
+        raise ValueError(msg)
     elif roi_height < 0:
-        raise ValueError(f"Invalid ROI height value: {roi_height}")
+        msg = f"Invalid ROI height value: {roi_height}"
+        raise ValueError(msg)
 
     return lower_left_x, upper_right_y, roi_width, roi_height
 
@@ -219,18 +223,14 @@ def save_image(filename, roi_x, roi_y, roi_width, roi_height, is_battery):
     print("Saving processed image...")
     selection_save_path = save_processed_image(img, roi_x, roi_y, roi_width, roi_height, filename, scale_amount)
 
-    # Create debug directory
     debug_folder = "debug"
     os.makedirs(debug_folder, exist_ok=True)
 
-    # Define path for the graph image
     graph_save_path = os.path.join(debug_folder, "graph_" + os.path.basename(filename))
     graph_save_path = graph_save_path.replace(".jfif", ".jpg")
 
-    # Create a separate figure just for the bar chart
-    plt.figure(figsize=(8, 2))
+    plt.figure(figsize=(8, 3))
 
-    # Format and display the total in the middle subplot
     total_minutes = row[-1]
     hours = int(total_minutes // 60)
     minutes = int(total_minutes % 60)
@@ -239,21 +239,18 @@ def save_image(filename, roi_x, roi_y, roi_width, roi_height, is_battery):
 
     ax = plt.gca()
 
-    plt.xlabel(f"Calculated Total: {total_text}", ha="center", va="center", fontsize=8, fontweight="bold")
+    plt.xlabel(f"Calculated Total: {total_text}", ha="center", va="center", labelpad=20, fontsize=16, fontweight="bold", color="#0066CC")
 
-    # Create the bar chart
     x = range(len(row[:-1]))
     height = row[:-1]
-    bars = plt.bar(np.array(x) + 0.5, height)
+    bars = plt.bar(np.array(x) + 0.5, height, color="#4682B4")
     plt.ylim([0, 60])
     plt.xlim([0, 24])
 
-    # Set up x-ticks for every hour with minute values
     tick_positions = np.array(range(24)) + 0.5
     tick_labels = [f"{int(x)}" for x in height]
 
-    # Set the minute value labels on the x-axis (horizontal)
-    plt.xticks(tick_positions, tick_labels, fontsize=8)
+    plt.xticks(tick_positions, tick_labels, fontsize=9, fontweight="bold")
 
     # Remove y-axis labels and ticks
     plt.yticks([])
@@ -263,11 +260,12 @@ def save_image(filename, roi_x, roi_y, roi_width, roi_height, is_battery):
     for spine in ["top", "right", "left"]:
         ax.spines[spine].set_visible(False)
 
-    # Add subtle grid lines for readability
-    plt.grid(which="both", axis="x", linestyle="--", linewidth=0.5, alpha=0.3)
+    for x in range(25):  # 0 to 24 for 24 hours + right edge
+        plt.axvline(x=x, color="gray", linestyle="--", linewidth=0.7, alpha=0.4)
 
-    # Save just the graph image
-    plt.savefig(graph_save_path, bbox_inches="tight", pad_inches=0)
+    plt.tight_layout(pad=0)
+
+    plt.savefig(graph_save_path, bbox_inches="tight", pad_inches=0, dpi=120)
     plt.close()
 
     return selection_save_path, row, graph_save_path
