@@ -92,6 +92,58 @@ def find_screenshot_title(img):
     return title
 
 
+def find_screenshot_total_usage_regex(img):
+    """
+    Find the total usage time by directly searching for time patterns in OCR text.
+    Looks for formats like '5h 30m', '45m', etc.
+    """
+    total = ""
+
+    # Extract text from the entire image
+    full_image_text = pytesseract.image_to_string(img)
+
+    # Define regex patterns for time formats
+    hour_min_pattern = r"(\d{1,2})\s*h\s+(\d{1,2})\s*m"
+    min_only_pattern = r"(\d{1,2})\s*m\b"
+    hours_only_pattern = r"(\d{1,2})\s*h\b"
+
+    # Search for patterns in the full image text
+    hour_min_match = re.search(hour_min_pattern, full_image_text)
+    if hour_min_match:
+        hours = int(hour_min_match.group(1))
+        minutes = int(hour_min_match.group(2))
+        total = f"{hours}h {minutes}m"
+    else:
+        hours_match = re.search(hours_only_pattern, full_image_text)
+        if hours_match:
+            hours = int(hours_match.group(1))
+            total = f"{hours}h"
+        else:
+            min_match = re.search(min_only_pattern, full_image_text)
+            if min_match:
+                minutes = int(min_match.group(1))
+                total = f"{minutes}m"
+            else:
+                # If no match is found, fall back to the original function
+                return find_screenshot_total_usage(img)
+
+    print(f"Found total with regex: {total}")
+
+    # For consistency with the original function, save a portion of the image
+    debug_extracted_total_folder = "./debug/extracted_total"
+    os.makedirs(debug_extracted_total_folder, exist_ok=True)
+
+    # Save a portion of the image as a placeholder
+    height, width = img.shape[:2]
+    center_x, center_y = width // 2, height // 2
+    # Create a small region around the center
+    total_extract = img[max(0, center_y - 100) : min(height, center_y + 100), max(0, center_x - 150) : min(width, center_x + 150)]
+    total_image_path = os.path.join(debug_extracted_total_folder, "total_extract_regex.jpg")
+    cv2.imwrite(total_image_path, total_extract)
+
+    return total, total_image_path
+
+
 def find_screenshot_total_usage(img):
     total = ""
 
