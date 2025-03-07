@@ -1,4 +1,5 @@
 import datetime
+import os
 from unittest import skip
 
 import cv2
@@ -16,30 +17,128 @@ VERBOSE = True
 error_state = -1, -1, -1, -1
 
 
+def is_daily_total_page(text_data):
+    # Key markers for distinguishing page types
+    daily_markers = ["WEEK", "DAY", "MOST", "USED", "CATEGORIES", "TODAY", "SHOW", "ENTERTAINMENT", "EDUCATION", "INFORMATION", "READING"]
+    app_markers = ["INFO", "DEVELOPER", "RATING", "LIMIT", "AGE", "DAILY", "AVERAGE"]
+
+    daily_count = 0
+    app_count = 0
+
+    for i in range(len(text_data["text"])):
+        text = text_data["text"][i].upper()
+        # print(f"Detected text: {text}")
+
+        for marker in daily_markers:
+            if marker in text:
+                daily_count += 1
+                # print(f"Found daily marker: {marker}")
+                break
+
+        for marker in app_markers:
+            if marker in text:
+                app_count += 1
+                # print(f"Found app marker: {marker}")
+                break
+
+    # print(f"Daily markers: {daily_count}, App markers: {app_count}")
+
+    return daily_count > app_count
+
+
+def find_screenshot_title(img):
+    title = ""
+
+    title_find = pytesseract.image_to_data(img, config="--psm 3", output_type=Output.DICT)
+
+    # Determine if this is a daily total page
+    if is_daily_total_page(title_find):
+        title = "Daily Total"
+    else:
+        # Existing code for finding app title
+        info_rect = [40, 300, 120, 2000]  # Default title location
+
+        found_info = False
+        for i in range(len(title_find["level"])):
+            if "INFO" in title_find["text"][i]:
+                info_rect = [title_find["left"][i], title_find["top"][i], title_find["width"][i], title_find["height"][i]]
+                found_info = True
+
+        if found_info:  # If we successfully found the "info" string...
+            # Look for text underneath the info rectangle:
+            app_height = info_rect[3] * 7
+            title_origin_y = info_rect[1] + info_rect[3]
+            x_origin = info_rect[0] + int(1.5 * info_rect[2])
+            x_width = x_origin + int(info_rect[2]) * 12
+            app_extract = img[title_origin_y : title_origin_y + app_height, x_origin:x_width]
+        else:
+            # Default to initial value
+            app_extract = img[info_rect[0] : info_rect[2], info_rect[1] : info_rect[3]]
+
+        if len(app_extract) > 0:
+            # Crop just to area of app name:
+            app_find = extract_all_text(app_extract)
+
+            for i in range(len(app_find["level"])):
+                (x, y, w, h) = (app_find["left"][i], app_find["top"][i], app_find["width"][i], app_find["height"][i])
+                cv2.rectangle(app_extract, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+                if len(app_find["text"][i]) > 0:
+                    title = title + " " + app_find["text"][i]
+                    title = title.replace("|", "").strip()
+                    print("Found title: " + title)
+
+    title = title.lstrip()
+    return title
+
+
 def find_screenshot_total_usage(img):
     total = ""
 
-
     total_find = pytesseract.image_to_data(img, config="--psm 3", output_type=Output.DICT)
-    total_rect = [40, 250, 120, 350]  # Default title location
+
+    # Determine if this is a daily total page
+    is_daily = is_daily_total_page(total_find)
+    total_rect = [-1, -1, -1, -1]
 
     found_total = False
     for i in range(len(total_find["level"])):
+        # For daily total pages, look for "SCREEN"
+        print(total_find["text"][i])
         if "SCREEN" in total_find["text"][i]:
             total_rect = [total_find["left"][i], total_find["top"][i], total_find["width"][i], total_find["height"][i]]
             found_total = True
 
-    if found_total:  # If we successfully found the "total" string...
-        # Look for text underneath the total rectangle:
-        total_height = int(total_rect[3] * 6)
-        total_origin_y = total_rect[1] + total_rect[3] + 50
-        x_origin = total_rect[0] - 50
-        x_width = x_origin + int(total_rect[2]) * 3
-        total_extract = img[total_origin_y : total_origin_y + total_height, x_origin:x_width]
+    if found_total:  # If we successfully found the marker...
+        # Look for text underneath the marker rectangle:
+        if is_daily:
+            y_origin = total_rect[1] + total_rect[3] + 95
+            height = int(total_rect[3] * 5)
+            x_origin = total_rect[0] - 50
+            width = int(total_rect[2]) * 4
+            print("Daily screenshot total coords:", f"y0: {y_origin}", f"y1: {y_origin + height}", f"x0: {x_origin}", f"x1: {x_origin + width}")
+            total_extract = img[y_origin : y_origin + height, x_origin : x_origin + width]
+        else:
+            height = int(total_rect[3] * 6)
+            y_origin = total_rect[1] + total_rect[3] + 50
+            x_origin = total_rect[0] - 50
+            width = int(total_rect[2]) * 4
+            print("App screenshot total coords:", f"y0: {y_origin}", f"y1: {y_origin + height}", f"x0: {x_origin}", f"x1: {x_origin + width}")
+            total_extract = img[y_origin : y_origin + height, x_origin : x_origin + width]
     else:
-        # Default to initial value
-        total_extract = img[total_rect[0] : total_rect[2], total_rect[1] : total_rect[3]]
+        if is_daily:
+            total_rect = [325, 30, 425, 450]  # Default title location
+            total_extract = img[total_rect[0] : total_rect[2], total_rect[1] : total_rect[3]]
+        else:
+            total_rect = [250, 30, 350, 450]  # Default title location
+            total_extract = img[total_rect[0] : total_rect[2], total_rect[1] : total_rect[3]]
 
+    # Make a copy for the visualization (before adding rectangles)
+    if len(total_extract) > 0:
+        total_image = total_extract.copy()
+
+    # cv2.imshow("Total Extract", total_extract)
+    # cv2.waitKey(0)
 
     if len(total_extract) > 0:
         # Crop just to area of app name:
@@ -50,59 +149,21 @@ def find_screenshot_total_usage(img):
             cv2.rectangle(total_extract, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
             if len(total_find["text"][i]) > 0:
-                total = (
-                    total + " " + total_find["text"][i]
-                )  # No longer restricting title length as no issues seem to be occurring at the moment and some long titles were being cut off
-                total = total.replace("|", "").strip()  # Remove '|' character from titles which seems to appear at the beginning of websites
+                total = total + " " + total_find["text"][i]
+                total = total.replace("|", "").strip()
 
     print("Found total: " + total)
-
-    total = total.lstrip()
-
-    return total
-
-
-def find_screenshot_title(img):
-    title = ""
-
-    title_find = pytesseract.image_to_data(img, config="--psm 3", output_type=Output.DICT)
-    info_rect = [40, 300, 120, 2000]  # Default title location
-
-    found_info = False
-    for i in range(len(title_find["level"])):
-        if "INFO" in title_find["text"][i]:
-            info_rect = [title_find["left"][i], title_find["top"][i], title_find["width"][i], title_find["height"][i]]
-            found_info = True
-
-    if found_info:  # If we successfully found the "info" string...
-        # Look for text underneath the info rectangle:
-        app_height = info_rect[3] * 7
-        title_origin_y = info_rect[1] + info_rect[3]
-        x_origin = info_rect[0] + int(1.5 * info_rect[2])
-        x_width = x_origin + int(info_rect[2]) * 12
-        app_extract = img[title_origin_y : title_origin_y + app_height, x_origin:x_width]
+    total = total.strip()
+    # Save the total image to a file for later display
+    if total_image is not None:
+        debug_extracted_total_folder = "./debug/extracted_total"
+        os.makedirs(debug_extracted_total_folder, exist_ok=True)
+        total_image_path = os.path.join(debug_extracted_total_folder, "total_extract.jpg")
+        cv2.imwrite(total_image_path, total_image)
     else:
-        # Default to initial value
-        app_extract = img[info_rect[0] : info_rect[2], info_rect[1] : info_rect[3]]
+        total_image_path = None
 
-    if len(app_extract) > 0:
-        # Crop just to area of app name:
-        app_find = extract_all_text(app_extract)
-
-        for i in range(len(app_find["level"])):
-            (x, y, w, h) = (app_find["left"][i], app_find["top"][i], app_find["width"][i], app_find["height"][i])
-            cv2.rectangle(app_extract, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-            if len(app_find["text"][i]) > 0:
-                title = (
-                    title + " " + app_find["text"][i]
-                )  # No longer restricting title length as no issues seem to be occurring at the moment and some long titles were being cut off
-                title = title.replace("|", "").strip()  # Remove '|' character from titles which seems to appear at the beginning of websites
-                print("Found title: " + title)
-
-    title = title.lstrip()
-
-    return title
+    return total, total_image_path
 
 
 def extract_all_text(image):
@@ -230,7 +291,7 @@ def find_left_anchor(d, img, img_copy, *, skip_detections=0):
                     line_row = extract_line(img, x - buffer, x + w + buffer, y - moving_index - buffer, y - moving_index + buffer, "horizontal")
 
                     moving_index = moving_index + 1
-                lower_left_y = y - buffer + line_row - moving_index
+                lower_left_y = y - buffer + line_row - moving_index + 1
 
                 #  Inch left until you find the grid...
                 print("Moving left to search for left anchor...")
@@ -238,7 +299,7 @@ def find_left_anchor(d, img, img_copy, *, skip_detections=0):
                 while line_col is None and moving_index < maximum_offset:
                     line_col = extract_line(img, x - moving_index - buffer, x - moving_index + buffer, y - buffer, y, "vertical")
                     moving_index = moving_index + 1
-                lower_left_x = x - buffer + line_col - moving_index
+                lower_left_x = x - buffer + line_col - moving_index + 1
 
                 if WANT_DEBUG_LINE_FIND:
                     cv2.rectangle(img_copy, (x - 2 * buffer, y - buffer), (x - buffer, y + h + buffer), (0, 255, 255), 2)

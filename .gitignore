@@ -182,3 +182,4 @@ debug/*
 archive/*
 __pycache__/*
 *.csv
+*Screenshots*/*

@@ -154,6 +154,7 @@ class ScreenshotApp(QWidget):
         self.last_row = None
         self.graph_issue = None
         self.title_issue = None
+        self.total_issue = None
         self.invalid_title_list = ["", " ", None]
 
     def init_ui(self):
@@ -222,10 +223,16 @@ class ScreenshotApp(QWidget):
         self.extracted_total_label = QLabel("Extracted Total: ")
         text_fields_layout.addWidget(self.extracted_total_label)
 
+        self.extracted_total_image = QLabel("No total image")
+        self.extracted_total_image.setAlignment(Qt.AlignCenter)
+        self.extracted_total_image.setMinimumHeight(50)  # Ensure it has some minimum height
+        self.extracted_total_image.setFrameShape(QFrame.Box)  # Add a frame around it
+        text_fields_layout.addWidget(self.extracted_total_image)
+
         self.snap_to_grid_checkbox = QCheckBox("Automatically snap to grid", self)
         text_fields_layout.addWidget(self.snap_to_grid_checkbox)
 
-        self.auto_process_images_checkbox = QCheckBox("Automatically process images (until an error occurs)", self)
+        self.auto_process_images_checkbox = QCheckBox("Automatically process images (minimized, until an error occurs)", self)
         text_fields_layout.addWidget(self.auto_process_images_checkbox)
 
         self.remove_duplicates_automatically_checkbox = QCheckBox("Remove duplicates in csv output, keeping last saved (based on image path)", self)
@@ -283,7 +290,7 @@ class ScreenshotApp(QWidget):
         nav_layout.addWidget(self.previous_button)
 
         self.next_button = QPushButton("Next/Save")
-        self.next_button.clicked.connect(self.show_next_image)
+        self.next_button.clicked.connect(self.show_next_image_manual_button_press)
         nav_layout.addWidget(self.next_button)
 
         layout.addLayout(nav_layout)
@@ -296,7 +303,7 @@ class ScreenshotApp(QWidget):
         self.resize(int(screen_geo.width() * 0.8), int(screen_geo.height() * 0.8))
 
     def update_interface(self):
-        if not self.graph_issue and not self.title_issue:
+        if not self.graph_issue and not self.title_issue and not self.total_issue:
             self.instruction_label.setText(
                 "Click Next/Save if ALL the graphs match (including the one on the left), otherwise click the upper left corner of the graph in the left image to reselect."
             )
@@ -306,13 +313,17 @@ class ScreenshotApp(QWidget):
                 self.instruction_label.setText(
                     "A title issue occurred. Please enter the title correctly and click Next/Save when finished.\nIf the title is for the daily view, please enter 'Daily Total'."
                 )
-                self.instruction_label.setStyleSheet("background-color:rgb(255,165,0)")  # Orange color
-            if self.graph_issue:
+                self.instruction_label.setStyleSheet("background-color:rgb(255,165,0)")
+            elif self.total_issue:
                 self.instruction_label.setText(
-                    "An graph detection issue occurred. To start reselecting, first click the upper left corner of the graph in the left image."
+                    "A total time discrepancy issue occurred. The extracted total was either not found, was overestimated by the calculated total, or differs from the calculated total by more than 5 minutes. You can either proceed or reselect the graph for better accuracy."
+                )
+                self.instruction_label.setStyleSheet("background-color:rgb(255,179,179)")
+            elif self.graph_issue:
+                self.instruction_label.setText(
+                    "A graph detection issue occurred. To start reselecting, first click the upper left corner of the graph in the left image."
                 )
                 self.instruction_label.setStyleSheet("background-color:rgb(255,0,0)")
-
             self.setWindowState(self.windowState() & ~QtCore.Qt.WindowMinimized | QtCore.Qt.WindowActive)
             self.setWindowFlags(QtCore.Qt.WindowStaysOnTopHint)
             self.show()
@@ -374,7 +385,7 @@ class ScreenshotApp(QWidget):
         print(f"Display width: {display_width}, Display height: {display_height}")
 
         print("Processing image from clicks...")
-        processed_image_path, graph_image_path, row, title, total = process_image_with_grid(
+        processed_image_path, graph_image_path, row, title, total, total_image_path = process_image_with_grid(
             image_path,
             true_upper_left,
             true_lower_right,
@@ -382,7 +393,7 @@ class ScreenshotApp(QWidget):
             self.snap_to_grid_checkbox.isChecked(),
         )
 
-        self.update(title, row, processed_image_path, graph_image_path)
+        self.update_(title, total, row, processed_image_path, graph_image_path, total_image_path)
 
     def update_time_label(self, value):
         selected_time = self.time_mapping.get(value, "Midnight")
@@ -424,9 +435,60 @@ class ScreenshotApp(QWidget):
             self.title_issue = False
             self.update_interface()
 
-    def update(self, title, total, row, processed_image_path, graph_image_path):
+    def parse_hours_and_minutes_time_string(self, total_str):
+        """
+        Parse the extracted total time string into minutes.
+        Handles various formats like "2h 30m", "45m", etc.
+        Returns -1 if parsing fails.
+        """
+        if not total_str or total_str == "N/A":
+            return -1
+
+        # Clean the string
+        cleaned_str = re.sub(r"[^\w\s]", " ", total_str).lower()
+
+        total_minutes = 0
+
+        # Look for hours pattern (e.g., "2h", "2 hours", etc.)
+        hours_match = re.search(r"(\d+)\s*h", cleaned_str)
+        if hours_match:
+            total_minutes += int(hours_match.group(1)) * 60
+
+        # Look for minutes pattern (e.g., "30m", "30 min", etc.)
+        minutes_match = re.search(r"(\d+)\s*m", cleaned_str)
+        if minutes_match:
+            total_minutes += int(minutes_match.group(1))
+
+        return total_minutes
+
+    def update_(self, title, total, row, processed_image_path, graph_image_path, total_image_path=None) -> None:
         self.extracted_text_edit.setText(title)
         self.extracted_total_label.setText(f"Extracted Total: {total}")
+
+        # Display the total image if available
+        if total_image_path and os.path.exists(total_image_path):
+            total_pixmap = QPixmap(total_image_path)
+            # Scale the image to a reasonable size
+            scaled_pixmap = total_pixmap.scaled(300, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.extracted_total_image.setPixmap(scaled_pixmap)
+        else:
+            self.extracted_total_image.setText("No total image available")
+
+        # Compare extracted and calculated totals for ScreenTime mode
+        if self.mode == "ScreenTime" and total != "N/A":
+            # Parse extracted total
+            extracted_total_minutes = self.parse_hours_and_minutes_time_string(total)
+
+            # Get calculated total
+            calculated_total_minutes = row[-1] if row else 0
+
+            # Set the total_issue flag if difference exceeds 5 minutes
+            if (calculated_total_minutes > extracted_total_minutes) or (abs(extracted_total_minutes - calculated_total_minutes) > 5):
+                self.total_issue = True
+            else:
+                self.total_issue = False
+        else:
+            self.total_issue = False
 
         if self.mode == "Battery":
             self.current_row = BatteryRow(
@@ -457,12 +519,10 @@ class ScreenshotApp(QWidget):
             )
 
             self.graph_issue = False
-
             self.update_interface()
 
         else:
             self.cropped_image_label.setText("No cropped image could be loaded from the selection.")
-
             self.graph_issue = True
             self.check_title()
             self.update_interface()
@@ -511,6 +571,11 @@ class ScreenshotApp(QWidget):
                     print(traceback.format_exc())
 
     def show_image(self, index):
+        # Reset all issue flags when loading a new image
+        self.total_issue = False
+        self.graph_issue = False
+        self.title_issue = False
+
         if 0 <= index < len(self.images):
             image_path = self.images[index]
             pixmap = QPixmap(image_path)
@@ -526,22 +591,28 @@ class ScreenshotApp(QWidget):
             self.current_image_index = index
 
             try:
-                processed_image_path, graph_image_path, row, title, total = process_image(
+                processed_image_path, graph_image_path, row, title, total, total_image_path = process_image(
                     image_path,
                     self.mode == "Battery",
                     self.snap_to_grid_checkbox.isChecked(),
                 )
 
-                self.update(title, total, row, processed_image_path, graph_image_path)
+                self.update_(title, total, row, processed_image_path, graph_image_path, total_image_path)
 
                 """These lines are what causes the app to loop automatically over images until an error occurs"""
-                if self.auto_process_images_checkbox.isChecked():
+                if self.auto_process_images_checkbox.isChecked() and not self.graph_issue and not self.title_issue and not self.total_issue:
                     self.showMinimized()
                     self.show_next_image()
 
             except Exception as e:
                 print(f"Error during image loading or processing: {traceback.format_exc()}")
-                self.update(None, None, None, None, None)
+                self.graph_issue = True
+                self.title_issue = False
+                self.total_issue = False
+                self.cropped_image_label.setText("No cropped image loaded.")
+                self.graph_image_label.setText("No graph extracted")
+                self.image_name_line_edit.setText("No image available.")
+                self.update_interface()
 
         else:
             self.image_label.setText("No image loaded.")
@@ -553,9 +624,23 @@ class ScreenshotApp(QWidget):
         if self.current_image_index + 1 < len(self.images):
             self.show_image(self.current_image_index + 1)
 
+    def show_next_image_manual_button_press(self):
+        if self.total_issue:
+            self.total_issue = False
+        self.show_next_image()
+
     def show_next_image(self):
-        if self.current_row and not self.graph_issue and not self.title_issue:
+        if (
+            self.current_row
+            and not self.graph_issue
+            and not self.title_issue
+            and not (self.total_issue and self.auto_process_images_checkbox.isChecked())
+        ):
             self.save_current_row()
+
+            if self.auto_process_images_checkbox.isChecked():
+                self.showMinimized()
+
             if self.current_image_index + 1 < len(self.images):
                 self.show_image(self.current_image_index + 1)
                 if self.current_image_index + 1 == len(self.images):

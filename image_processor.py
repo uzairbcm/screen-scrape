@@ -65,17 +65,18 @@ def process_image_with_grid(filename, upper_left, lower_right, is_battery=False,
             print("Extracting time...")
             title = find_time(img_copy, roi_x, roi_y, roi_width, roi_height)
             total = "N/A"
+            total_image_path = None
         else:
             print("Extracting title...")
             title = find_screenshot_title(img)
-            total = find_screenshot_total_usage(img)
+            total, total_image_path = find_screenshot_total_usage(img)
 
         filename, row, graph_filename = save_image(filename, roi_x, roi_y, roi_width, roi_height, is_battery)
-        return filename, graph_filename, row, title, total
+        return filename, graph_filename, row, title, total, total_image_path
 
     except ImageProcessingError as e:
         print(f"Error: {traceback.format_exc()}")
-        return None, None, list(range(25)), "", ""
+        return None, None, list(range(25)), "", "", None
 
 
 def process_image(filename, is_battery=False, snap_to_grid=False):
@@ -143,16 +144,14 @@ def apply_processing(filename, img, is_battery, snap_to_grid):
     if is_battery:
         title = find_time(img_copy, roi_x, roi_y, roi_width, roi_height)
         total = "N/A"
+        total_image_path = None
     else:
         title = find_screenshot_title(img)
-        total = find_screenshot_total_usage(img)
+        total, total_image_path = find_screenshot_total_usage(img)
 
     # Save the processed image and return
     filename, row, graph_filename = save_image(filename, roi_x, roi_y, roi_width, roi_height, is_battery)
-    return filename, graph_filename, row, title, total
-    # except Exception:
-    #     print(f"Processing failed: {traceback.format_exc()}")
-    #     return None, None, [], ""
+    return filename, graph_filename, row, title, total, total_image_path
 
 
 def find_time(img, roi_x, roi_y, roi_width, roi_height):
