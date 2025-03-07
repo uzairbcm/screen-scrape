@@ -93,21 +93,14 @@ def find_screenshot_title(img):
 
 
 def find_screenshot_total_usage_regex(img):
-    """
-    Find the total usage time by directly searching for time patterns in OCR text.
-    Looks for formats like '5h 30m', '45m', etc.
-    """
     total = ""
 
-    # Extract text from the entire image
     full_image_text = pytesseract.image_to_string(img)
 
-    # Define regex patterns for time formats
     hour_min_pattern = r"(\d{1,2})\s*h\s+(\d{1,2})\s*m"
     min_only_pattern = r"(\d{1,2})\s*m\b"
     hours_only_pattern = r"(\d{1,2})\s*h\b"
 
-    # Search for patterns in the full image text
     hour_min_match = re.search(hour_min_pattern, full_image_text)
     if hour_min_match:
         hours = int(hour_min_match.group(1))
@@ -123,20 +116,15 @@ def find_screenshot_total_usage_regex(img):
             if min_match:
                 minutes = int(min_match.group(1))
                 total = f"{minutes}m"
-            else:
-                # If no match is found, fall back to the original function
-                return find_screenshot_total_usage(img)
 
     print(f"Found total with regex: {total}")
 
-    # For consistency with the original function, save a portion of the image
     debug_extracted_total_folder = "./debug/extracted_total"
     os.makedirs(debug_extracted_total_folder, exist_ok=True)
 
-    # Save a portion of the image as a placeholder
     height, width = img.shape[:2]
     center_x, center_y = width // 2, height // 2
-    # Create a small region around the center
+
     total_extract = img[max(0, center_y - 100) : min(height, center_y + 100), max(0, center_x - 150) : min(width, center_x + 150)]
     total_image_path = os.path.join(debug_extracted_total_folder, "total_extract_regex.jpg")
     cv2.imwrite(total_image_path, total_extract)
@@ -146,23 +134,21 @@ def find_screenshot_total_usage_regex(img):
 
 def find_screenshot_total_usage(img):
     total = ""
+    total_image = None
 
     total_find = pytesseract.image_to_data(img, config="--psm 3", output_type=Output.DICT)
 
-    # Determine if this is a daily total page
     is_daily = is_daily_total_page(total_find)
     total_rect = [-1, -1, -1, -1]
 
     found_total = False
     for i in range(len(total_find["level"])):
-        # For daily total pages, look for "SCREEN"
         print(total_find["text"][i])
         if "SCREEN" in total_find["text"][i]:
             total_rect = [total_find["left"][i], total_find["top"][i], total_find["width"][i], total_find["height"][i]]
             found_total = True
 
-    if found_total:  # If we successfully found the marker...
-        # Look for text underneath the marker rectangle:
+    if found_total:
         if is_daily:
             y_origin = total_rect[1] + total_rect[3] + 95
             height = int(total_rect[3] * 5)
@@ -185,7 +171,6 @@ def find_screenshot_total_usage(img):
             total_rect = [250, 30, 350, 450]  # Default title location
             total_extract = img[total_rect[0] : total_rect[2], total_rect[1] : total_rect[3]]
 
-    # Make a copy for the visualization (before adding rectangles)
     if len(total_extract) > 0:
         total_image = total_extract.copy()
 
@@ -193,7 +178,6 @@ def find_screenshot_total_usage(img):
     # cv2.waitKey(0)
 
     if len(total_extract) > 0:
-        # Crop just to area of app name:
         total_find = extract_all_text(total_extract)
 
         for i in range(len(total_find["level"])):
@@ -206,14 +190,20 @@ def find_screenshot_total_usage(img):
 
     print("Found total: " + total)
     total = total.strip()
-    # Save the total image to a file for later display
+
+    total_image_path = None
     if total_image is not None:
         debug_extracted_total_folder = "./debug/extracted_total"
         os.makedirs(debug_extracted_total_folder, exist_ok=True)
         total_image_path = os.path.join(debug_extracted_total_folder, "total_extract.jpg")
         cv2.imwrite(total_image_path, total_image)
-    else:
-        total_image_path = None
+
+    if not total or not re.search(r"\d+\s*[hm]", total):
+        print("Original method failed to find total time, trying regex approach...")
+        regex_total, regex_image_path = find_screenshot_total_usage_regex(img)
+
+        if regex_total:
+            return regex_total, regex_image_path
 
     return total, total_image_path
 
