@@ -1,11 +1,13 @@
+from __future__ import annotations
+
 import datetime
-import os
-from unittest import skip
+import re
+from enum import StrEnum
+from pathlib import Path
 
 import cv2
-from pytesseract import pytesseract, Output
 import numpy as np
-import re
+from pytesseract import Output, pytesseract
 
 WANT_DEBUG_LINE_FIND = False
 WANT_DEBUG_LEFT = False
@@ -17,25 +19,30 @@ VERBOSE = True
 error_state = -1, -1, -1, -1
 
 
-def is_daily_total_page(text_data):
+class LineExtractionMode(StrEnum):
+    HORIZONTAL = "horizontal"
+    VERTICAL = "vertical"
+
+
+def is_daily_total_page(ocr_dict: dict) -> bool:
     # Key markers for distinguishing page types
-    daily_markers = ["WEEK", "DAY", "MOST", "USED", "CATEGORIES", "TODAY", "SHOW", "ENTERTAINMENT", "EDUCATION", "INFORMATION", "READING"]
-    app_markers = ["INFO", "DEVELOPER", "RATING", "LIMIT", "AGE", "DAILY", "AVERAGE"]
+    DAILY_MARKERS = ["WEEK", "DAY", "MOST", "USED", "CATEGORIES", "TODAY", "SHOW", "ENTERTAINMENT", "EDUCATION", "INFORMATION", "READING"]
+    APP_MARKERS = ["INFO", "DEVELOPER", "RATING", "LIMIT", "AGE", "DAILY", "AVERAGE"]
 
     daily_count = 0
     app_count = 0
 
-    for i in range(len(text_data["text"])):
-        text = text_data["text"][i].upper()
+    for i in range(len(ocr_dict["text"])):
+        text = ocr_dict["text"][i].upper()
         # print(f"Detected text: {text}")
 
-        for marker in daily_markers:
+        for marker in DAILY_MARKERS:
             if marker in text:
                 daily_count += 1
                 # print(f"Found daily marker: {marker}")
                 break
 
-        for marker in app_markers:
+        for marker in APP_MARKERS:
             if marker in text:
                 app_count += 1
                 # print(f"Found app marker: {marker}")
@@ -46,7 +53,7 @@ def is_daily_total_page(text_data):
     return daily_count > app_count
 
 
-def find_screenshot_title(img):
+def find_screenshot_title(img: np.ndarray) -> str:
     title = ""
 
     title_find = pytesseract.image_to_data(img, config="--psm 3", output_type=Output.DICT)
@@ -88,11 +95,10 @@ def find_screenshot_title(img):
                     title = title.replace("|", "").strip()
                     print("Found title: " + title)
 
-    title = title.lstrip()
-    return title
+    return title.lstrip()
 
 
-def find_screenshot_total_usage_regex(img):
+def find_screenshot_total_usage_regex(img: np.ndarray) -> tuple[str, str | None]:
     total = ""
 
     full_image_text = pytesseract.image_to_string(img)
@@ -120,19 +126,19 @@ def find_screenshot_total_usage_regex(img):
     print(f"Found total with regex: {total}")
 
     debug_extracted_total_folder = "./debug/extracted_total"
-    os.makedirs(debug_extracted_total_folder, exist_ok=True)
+    Path(debug_extracted_total_folder).mkdir(parents=True, exist_ok=True)
 
     height, width = img.shape[:2]
     center_x, center_y = width // 2, height // 2
 
     total_extract = img[max(0, center_y - 100) : min(height, center_y + 100), max(0, center_x - 150) : min(width, center_x + 150)]
-    total_image_path = os.path.join(debug_extracted_total_folder, "total_extract_regex.jpg")
-    cv2.imwrite(total_image_path, total_extract)
+    total_image_path = Path(debug_extracted_total_folder) / "total_extract_regex.jpg"
+    cv2.imwrite(str(total_image_path), total_extract)
 
-    return total, total_image_path
+    return total, str(total_image_path)
 
 
-def find_screenshot_total_usage(img):
+def find_screenshot_total_usage(img: np.ndarray) -> tuple[str, str | None]:
     total = ""
     total_image = None
 
@@ -163,13 +169,12 @@ def find_screenshot_total_usage(img):
             width = int(total_rect[2]) * 4
             print("App screenshot total coords:", f"y0: {y_origin}", f"y1: {y_origin + height}", f"x0: {x_origin}", f"x1: {x_origin + width}")
             total_extract = img[y_origin : y_origin + height, x_origin : x_origin + width]
+    elif not found_total and is_daily:
+        total_rect = [325, 30, 425, 450]
+        total_extract = img[total_rect[0] : total_rect[2], total_rect[1] : total_rect[3]]
     else:
-        if is_daily:
-            total_rect = [325, 30, 425, 450]  # Default title location
-            total_extract = img[total_rect[0] : total_rect[2], total_rect[1] : total_rect[3]]
-        else:
-            total_rect = [250, 30, 350, 450]  # Default title location
-            total_extract = img[total_rect[0] : total_rect[2], total_rect[1] : total_rect[3]]
+        total_rect = [250, 30, 350, 450]
+        total_extract = img[total_rect[0] : total_rect[2], total_rect[1] : total_rect[3]]
 
     if len(total_extract) > 0:
         total_image = total_extract.copy()
@@ -194,9 +199,9 @@ def find_screenshot_total_usage(img):
     total_image_path = None
     if total_image is not None:
         debug_extracted_total_folder = "./debug/extracted_total"
-        os.makedirs(debug_extracted_total_folder, exist_ok=True)
-        total_image_path = os.path.join(debug_extracted_total_folder, "total_extract.jpg")
-        cv2.imwrite(total_image_path, total_image)
+        Path(debug_extracted_total_folder).mkdir(parents=True, exist_ok=True)
+        total_image_path = Path(debug_extracted_total_folder) / "total_extract.jpg"
+        cv2.imwrite(str(total_image_path), total_image)
 
     if not total or not re.search(r"\d+\s*[hm]", total):
         print("Original method failed to find total time, trying regex approach...")
@@ -205,10 +210,10 @@ def find_screenshot_total_usage(img):
         if regex_total:
             return regex_total, regex_image_path
 
-    return total, total_image_path
+    return total, str(total_image_path)
 
 
-def extract_all_text(image):
+def extract_all_text(image: np.ndarray) -> dict:
     # Increase contrast
     image = adjust_contrast_brightness(image, contrast=2.0, brightness=0)
 
@@ -223,7 +228,7 @@ def extract_all_text(image):
     return dictionary
 
 
-def convert_dark_mode(img):
+def convert_dark_mode(img: np.ndarray) -> np.ndarray:
     dark_mode_threshold = 100
     if np.mean(img) < dark_mode_threshold:
         img = 255 - img
@@ -232,12 +237,12 @@ def convert_dark_mode(img):
     return img
 
 
-def adjust_contrast_brightness(img, contrast: float = 1.0, brightness: int = 0):
+def adjust_contrast_brightness(img: np.ndarray, contrast: float = 1.0, brightness: int = 0) -> np.ndarray:
     brightness += int(round(255 * (1 - contrast) / 2))
     return cv2.addWeighted(img, contrast, img, 0, brightness)
 
 
-def get_pixel(img, arg):
+def get_pixel(img: np.ndarray, arg: int) -> np.ndarray | None:
     """Get the dominant pixel in the image"""
     unq, count = np.unique(img.reshape(-1, img.shape[-1]), axis=0, return_counts=True)
     sort = np.argsort(count)
@@ -249,7 +254,7 @@ def get_pixel(img, arg):
     return sorted_unq[arg]
 
 
-def find_right_anchor(d, img, img_copy):
+def find_right_anchor(d, img: np.ndarray, img_copy: np.ndarray) -> tuple[bool, int, int]:
     found_flag = False
     n_boxes = len(d["level"])
     upper_right_x = -1
@@ -262,43 +267,42 @@ def find_right_anchor(d, img, img_copy):
         (x, y, w, h) = (d["left"][i], d["top"][i], d["width"][i], d["height"][i])
         cv2.rectangle(img_copy, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-        if any(key in d["text"][i] for key in key_list):
-            if not found_flag:
-                found_flag = True
-                if WANT_DEBUG_LINE_FIND:
-                    cv2.rectangle(img_copy, (x - buffer, y), (x, y + buffer), (255, 0, 3), 2)
-                    show_until_destroyed("Image", img_copy)
+        if any(key in d["text"][i] for key in key_list) and not found_flag:
+            found_flag = True
+            if WANT_DEBUG_LINE_FIND:
+                cv2.rectangle(img_copy, (x - buffer, y), (x, y + buffer), (255, 0, 3), 2)
+                show_until_destroyed("Image", img_copy)
 
-                line_row = None
-                line_col = None
+            line_row = None
+            line_col = None
 
-                #  Inch up until you find the grid...
-                print("Moving up to search for right anchor...")
-                moving_index = 0
-                while line_row is None and moving_index < maximum_offset:
-                    line_row = extract_line(img, x - buffer, x, y - moving_index, y - moving_index + h + buffer, "horizontal")
-                    moving_index = moving_index + 1
-                upper_right_y = y + line_row - moving_index + 1
+            #  Inch up until you find the grid...
+            print("Moving up to search for right anchor...")
+            moving_index = 0
+            while line_row is None and moving_index < maximum_offset:
+                line_row = extract_line(img, x - buffer, x, y - moving_index, y - moving_index + h + buffer, LineExtractionMode.HORIZONTAL)
+                moving_index = moving_index + 1
+            upper_right_y = y + line_row - moving_index + 1
 
-                #  Inch left until you find the grid...
-                print("Moving left to search for right anchor...")
-                moving_index = 0
-                while line_col is None and moving_index < maximum_offset:
-                    line_col = extract_line(img, x - buffer - moving_index, x - moving_index, y, y + h + buffer, "vertical")
-                    moving_index = moving_index + 1
-                upper_right_x = x - buffer + line_col - moving_index + 1
+            #  Inch left until you find the grid...
+            print("Moving left to search for right anchor...")
+            moving_index = 0
+            while line_col is None and moving_index < maximum_offset:
+                line_col = extract_line(img, x - buffer - moving_index, x - moving_index, y, y + h + buffer, LineExtractionMode.VERTICAL)
+                moving_index = moving_index + 1
+            upper_right_x = x - buffer + line_col - moving_index + 1
 
-                if WANT_DEBUG_LINE_FIND:
-                    cv2.rectangle(img_copy, (upper_right_x, upper_right_y), (upper_right_x + buffer, upper_right_y + buffer), (0, 0, 3), 2)
+            if WANT_DEBUG_LINE_FIND:
+                cv2.rectangle(img_copy, (upper_right_x, upper_right_y), (upper_right_x + buffer, upper_right_y + buffer), (0, 0, 3), 2)
 
-                    show_until_destroyed("Image", img_copy)
+                show_until_destroyed("Image", img_copy)
 
     return found_flag, upper_right_x, upper_right_y
 
 
-def find_left_anchor(d, img, img_copy, *, skip_detections=0):
+def find_left_anchor(ocr_dict: dict, img: np.ndarray, img_copy: np.ndarray, *, detections_to_skip: int = 0) -> tuple[bool, int, int]:
     found_flag = False
-    n_boxes = len(d["level"])
+    n_boxes = len(ocr_dict["level"])
     lower_left_x = -1
     lower_left_y = -1
     buffer = 25
@@ -307,12 +311,12 @@ def find_left_anchor(d, img, img_copy, *, skip_detections=0):
     maximum_offset = 100
 
     for i in range(n_boxes):
-        (x, y, w, h) = (d["left"][i], d["top"][i], d["width"][i], d["height"][i])
+        (x, y, w, h) = (ocr_dict["left"][i], ocr_dict["top"][i], ocr_dict["width"][i], ocr_dict["height"][i])
         cv2.rectangle(img_copy, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-        if any(key in d["text"][i] for key in key_list):
+        if any(key in ocr_dict["text"][i] for key in key_list):
             detection_count += 1
-            if detection_count <= skip_detections:
+            if detection_count <= detections_to_skip:
                 continue
             cv2.rectangle(img, (x, y), (x + w, y + h), (255, 255, 255), -1)
 
@@ -330,7 +334,9 @@ def find_left_anchor(d, img, img_copy, *, skip_detections=0):
                 print("Moving up to search for left anchor...")
                 moving_index = 0
                 while line_row is None and moving_index < maximum_offset:
-                    line_row = extract_line(img, x - buffer, x + w + buffer, y - moving_index - buffer, y - moving_index + buffer, "horizontal")
+                    line_row = extract_line(
+                        img, x - buffer, x + w + buffer, y - moving_index - buffer, y - moving_index + buffer, LineExtractionMode.HORIZONTAL
+                    )
 
                     moving_index = moving_index + 1
                 lower_left_y = y - buffer + line_row - moving_index + 1
@@ -339,7 +345,7 @@ def find_left_anchor(d, img, img_copy, *, skip_detections=0):
                 print("Moving left to search for left anchor...")
                 moving_index = 0
                 while line_col is None and moving_index < maximum_offset:
-                    line_col = extract_line(img, x - moving_index - buffer, x - moving_index + buffer, y - buffer, y, "vertical")
+                    line_col = extract_line(img, x - moving_index - buffer, x - moving_index + buffer, y - buffer, y, LineExtractionMode.VERTICAL)
                     moving_index = moving_index + 1
                 lower_left_x = x - buffer + line_col - moving_index + 1
 
@@ -351,13 +357,13 @@ def find_left_anchor(d, img, img_copy, *, skip_detections=0):
     return found_flag, lower_left_x, lower_left_y
 
 
-def show_until_destroyed(img_name, img):
+def show_until_destroyed(img_name: str, img: np.ndarray) -> None:
     cv2.imshow(img_name, img)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
 
-def extract_line(img, x0, x1, y0, y1, mode):
+def extract_line(img, x0: int, x1: int, y0: int, y1: int, line_extraction_mode: LineExtractionMode) -> int:
     sub_image = img[y0:y1, x0:x1]
 
     # Binarize for line extraction
@@ -369,7 +375,8 @@ def extract_line(img, x0, x1, y0, y1, mode):
     if WANT_DEBUG_SUBIMAGE:
         cv2.imshow("img", sub_image)
         cv2.waitKey(0)
-    if mode == "horizontal":
+
+    if line_extraction_mode == LineExtractionMode.HORIZONTAL:
         shape = np.shape(sub_image)
 
         for i in range(shape[0]):
@@ -380,8 +387,9 @@ def extract_line(img, x0, x1, y0, y1, mode):
                     row_score = row_score + 1
             if row_score > 0.5 * shape[1]:  # Threshold set by inspection; can be modified
                 return i
+        return 0
 
-    if mode == "vertical":
+    elif line_extraction_mode == LineExtractionMode.VERTICAL:
         shape = np.shape(sub_image)
         for j in range(shape[1]):
             col_score = 0
@@ -392,23 +400,26 @@ def extract_line(img, x0, x1, y0, y1, mode):
 
             if col_score > 0.25 * shape[0]:  # Threshold set by inspection; can be modified
                 return j
-        return None
-    return None
+        return 0
+
+    else:
+        msg = "Invalid mode for line extraction"
+        raise ValueError(msg)
 
 
-def is_close(pixel_1, pixel_2, thresh=1):
+def is_close(pixel_1: np.ndarray, pixel_2: np.ndarray, thresh: int = 1) -> bool:
     """Decide if two pixels are close enough"""
     return np.sum(np.abs(pixel_1 - pixel_2)) <= thresh * len(pixel_1)
 
 
-def reduce_color_count(img, num_colors):
+def reduce_color_count(img: np.ndarray, num_colors: int) -> np.ndarray:
     """Reduce the color count to help with aliasing"""
     for i in range(num_colors):
         img[(img >= i * 255 / num_colors) & (img < (i + 1) * 255 / num_colors)] = i * 255 / (num_colors - 1)
     return img
 
 
-def remove_all_but(img, color, threshold=30):
+def remove_all_but(img: np.ndarray, color: np.ndarray, threshold: int = 30):
     distances = np.linalg.norm(img - color, axis=2)
     mask = distances <= threshold
     img[mask] = [0, 0, 0]
@@ -416,7 +427,13 @@ def remove_all_but(img, color, threshold=30):
     return img
 
 
-def slice_image(img, roi_x=1215, roi_y=384, roi_width=1078, roi_height=177):
+def slice_image(
+    img: np.ndarray,
+    roi_x: int = 1215,
+    roi_y: int = 384,
+    roi_width: int = 1078,
+    roi_height: int = 177,
+) -> tuple[list, np.ndarray, int]:
     img_copy = img.copy()
 
     print("Slicing image...")
@@ -460,11 +477,11 @@ def slice_image(img, roi_x=1215, roi_y=384, roi_width=1078, roi_height=177):
         for y_coord in range(rows):
             if np.sum(true_slice[y_coord]) == 0:
                 counter = counter + 1
-            if is_close(true_slice[y_coord], [255, 255, 255], 2) and y_coord < rows - lower_grid_buffer:
+            if is_close(true_slice[y_coord], np.ndarray([255, 255, 255]), 2) and y_coord < rows - lower_grid_buffer:
                 counter = 0
 
         if VERBOSE:
-            print(str(slice_index) + ", " + str((max_y * counter / rows)))
+            print(str(slice_index) + ", " + str(max_y * counter / rows))
 
         usage_at_time = np.floor(max_y * counter / rows)
 
@@ -503,7 +520,14 @@ def snap_to_grid(img, x, y, w, h):
     while line_row is None and moving_index < maximum_offset:
         print("Snapping to grid by looking down...")
         # Start buffer above the current point and scoot down
-        line_row = extract_line_snap_to_grid(img, x, x + buffer, y - buffer + moving_index, y + moving_index, "horizontal")
+        line_row = extract_line_snap_to_grid(
+            img,
+            x,
+            x + buffer,
+            y - buffer + moving_index,
+            y + moving_index,
+            LineExtractionMode.HORIZONTAL,
+        )
         moving_index = moving_index + 1
 
     if line_row is None:
@@ -517,7 +541,14 @@ def snap_to_grid(img, x, y, w, h):
     while line_col is None and moving_index < maximum_offset:
         # Start buffer to the left of the point
         print("Snapping to grid by looking right...")
-        line_col = extract_line_snap_to_grid(img, x - buffer + moving_index, x + moving_index, y, y + buffer, "vertical")
+        line_col = extract_line_snap_to_grid(
+            img,
+            x - buffer + moving_index,
+            x + moving_index,
+            y,
+            y + buffer,
+            LineExtractionMode.VERTICAL,
+        )
         moving_index = moving_index + 1
     if line_col is None:
         print("Returning error state")
@@ -543,7 +574,7 @@ def snap_to_grid(img, x, y, w, h):
             x + int(23 * w / 24 + buffer / 2),
             y + h + moving_index - buffer,
             y + h + moving_index,
-            "horizontal",
+            LineExtractionMode.HORIZONTAL,
             grid_color,
         )
 
@@ -568,7 +599,15 @@ def snap_to_grid(img, x, y, w, h):
     while line_col is None and moving_index < maximum_offset:
         print("Snapping to grid by looking right... (right)")
 
-        line_col = extract_line_snap_to_grid(test, x + w + moving_index - buffer, x + w + moving_index, y + h - buffer, y + h, "vertical", grid_color)
+        line_col = extract_line_snap_to_grid(
+            test,
+            x + w + moving_index - buffer,
+            x + w + moving_index,
+            y + h - buffer,
+            y + h,
+            LineExtractionMode.VERTICAL,
+            grid_color,
+        )
         moving_index = moving_index + 1
     if line_col is None:
         print("Returning error state")
@@ -580,14 +619,22 @@ def snap_to_grid(img, x, y, w, h):
     return upper_left_x, upper_left_y, lower_right_x - upper_left_x, lower_right_y - upper_left_y
 
 
-def extract_line_snap_to_grid(img, x0, x1, y0, y1, mode, grid_color=None):
+def extract_line_snap_to_grid(
+    img: np.ndarray,
+    x0: int,
+    x1: int,
+    y0: int,
+    y1: int,
+    line_extraction_mode: LineExtractionMode,
+    grid_color: np.ndarray | None = None,
+):
     sub_image = img[y0:y1, x0:x1].copy()
 
     is_battery = False
     if grid_color is not None and is_battery:
         pixel_value = grid_color
         sub_image = remove_all_but(sub_image, pixel_value, 100)
-        pixel_value = [0, 0, 0]
+        pixel_value = np.ndarray([0, 0, 0])
     else:
         sub_image = reduce_color_count(sub_image, 2)
         pixel_value = get_pixel(sub_image, -2)
@@ -601,7 +648,7 @@ def extract_line_snap_to_grid(img, x0, x1, y0, y1, mode, grid_color=None):
 
     count_color = pixel_value
 
-    if mode == "horizontal":
+    if line_extraction_mode == LineExtractionMode.HORIZONTAL:
         shape = np.shape(sub_image)
 
         for i in range(shape[0]):
@@ -613,7 +660,7 @@ def extract_line_snap_to_grid(img, x0, x1, y0, y1, mode, grid_color=None):
             if row_score > 0.7 * shape[1]:  # Threshold set by inspection; can be modified
                 return i
 
-    if mode == "vertical":
+    if line_extraction_mode == "vertical":
         shape = np.shape(sub_image)
         for j in range(shape[1]):
             col_score = 0
@@ -628,12 +675,11 @@ def extract_line_snap_to_grid(img, x0, x1, y0, y1, mode, grid_color=None):
     return None
 
 
-def clean_date_string(date_string):
-    cleaned_string = re.sub(r"[^a-zA-Z0-9\s]", "", date_string)
-    return cleaned_string
+def clean_date_string(date_string: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9\s]", "", date_string)
 
 
-def get_text(img, roi_x, roi_y, roi_width, roi_height):
+def get_text(img: np.ndarray, roi_x: int, roi_y: int, roi_width: int, roi_height: int) -> tuple[str, str, bool]:
     text_y_start = roi_y + int(roi_height * 1.23)
     text_y_end = roi_y + int(roi_height * 1.46)
     text_x_width = int(roi_width / 8)
@@ -647,28 +693,30 @@ def get_text(img, roi_x, roi_y, roi_width, roi_height):
     first_date = clean_date_string(extract_date(first_location).strip())
     second_date = clean_date_string(extract_date(second_location).strip())
 
-    if is_date(second_date):
-        is_pm = True
+    try:
         first_date = get_day_before(second_date)
-    else:
+    except ValueError:
         is_pm = False
+    else:
+        is_pm = True
+
     return first_date, second_date, is_pm
 
 
-def extract_date(image):
-    text = pytesseract.image_to_string(image)
-    return text
+def extract_date(image: np.ndarray) -> str:
+    return pytesseract.image_to_string(image)
 
 
-def is_date(s):
+def is_date(string: str) -> bool:
     try:
-        datetime.datetime.strptime(s, "%b %d")
-        return True
+        datetime.datetime.strptime(string, "%b %d")  # noqa: DTZ007
     except ValueError:
         return False
+    else:
+        return True
 
 
-def remove_line_color(img):
+def remove_line_color(img: np.ndarray) -> np.ndarray:
     line_color = np.array([203, 199, 199])
     shape = np.shape(img)
 
@@ -681,7 +729,7 @@ def remove_line_color(img):
     return img
 
 
-def darken_non_white(img):
+def darken_non_white(img: np.ndarray) -> np.ndarray:
     """Darken the non-white pixels in the bars"""
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
@@ -690,13 +738,14 @@ def darken_non_white(img):
     return img
 
 
-def get_day_before(s):
-    try:
-        dt = datetime.datetime.strptime(s, "%b %d")
+def get_day_before(string: str) -> str:
+    if is_date(string):
+        dt = datetime.datetime.strptime(string, "%b %d")  # noqa: DTZ007
         day_before = dt - datetime.timedelta(days=1)
         return day_before.strftime("%b %d")
-    except ValueError:
-        return None
+    else:
+        msg = "Invalid date string, could not get day before"
+        raise ValueError(msg)
 
 
 # def save_selected_images(original_image, selection_image, approximation_image, error_occurred, *args, threshold=0,**kwargs):
