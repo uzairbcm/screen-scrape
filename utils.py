@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import datetime
 import re
-from enum import StrEnum
 from pathlib import Path
 
 import cv2
 import numpy as np
 from pytesseract import Output, pytesseract
+
+from enums import LineExtractionMode
 
 WANT_DEBUG_LINE_FIND = False
 WANT_DEBUG_LEFT = False
@@ -18,10 +19,6 @@ WANT_DEBUG_TEXT = False
 VERBOSE = True
 error_state = -1, -1, -1, -1
 
-
-class LineExtractionMode(StrEnum):
-    HORIZONTAL = "horizontal"
-    VERTICAL = "vertical"
 
 
 def is_daily_total_page(ocr_dict: dict) -> bool:
@@ -48,7 +45,7 @@ def is_daily_total_page(ocr_dict: dict) -> bool:
                 # print(f"Found app marker: {marker}")
                 break
 
-    # print(f"Daily markers: {daily_count}, App markers: {app_count}")
+    print(f"Daily usage page markers: {daily_count}, App usage page markers: {app_count}")
 
     return daily_count > app_count
 
@@ -93,9 +90,11 @@ def find_screenshot_title(img: np.ndarray) -> str:
                 if len(app_find["text"][i]) > 0:
                     title = title + " " + app_find["text"][i]
                     title = title.replace("|", "").strip()
-                    print("Found title: " + title)
 
-    return title.lstrip()
+    title.lstrip()
+    print("Found title: " + title)
+
+    return title
 
 
 def find_screenshot_total_usage_regex(img: np.ndarray) -> tuple[str, str | None]:
@@ -149,7 +148,7 @@ def find_screenshot_total_usage(img: np.ndarray) -> tuple[str, str | None]:
 
     found_total = False
     for i in range(len(total_find["level"])):
-        print(total_find["text"][i])
+        # print(total_find["text"][i])
         if "SCREEN" in total_find["text"][i]:
             total_rect = [total_find["left"][i], total_find["top"][i], total_find["width"][i], total_find["height"][i]]
             found_total = True
@@ -160,14 +159,14 @@ def find_screenshot_total_usage(img: np.ndarray) -> tuple[str, str | None]:
             height = int(total_rect[3] * 5)
             x_origin = total_rect[0] - 50
             width = int(total_rect[2]) * 4
-            print("Daily screenshot total coords:", f"y0: {y_origin}", f"y1: {y_origin + height}", f"x0: {x_origin}", f"x1: {x_origin + width}")
+            # print("Daily screenshot total coords:", f"y0: {y_origin}", f"y1: {y_origin + height}", f"x0: {x_origin}", f"x1: {x_origin + width}")
             total_extract = img[y_origin : y_origin + height, x_origin : x_origin + width]
         else:
             height = int(total_rect[3] * 6)
             y_origin = total_rect[1] + total_rect[3] + 50
             x_origin = total_rect[0] - 50
             width = int(total_rect[2]) * 4
-            print("App screenshot total coords:", f"y0: {y_origin}", f"y1: {y_origin + height}", f"x0: {x_origin}", f"x1: {x_origin + width}")
+            # print("App screenshot total coords:", f"y0: {y_origin}", f"y1: {y_origin + height}", f"x0: {x_origin}", f"x1: {x_origin + width}")
             total_extract = img[y_origin : y_origin + height, x_origin : x_origin + width]
     elif not found_total and is_daily:
         total_rect = [325, 30, 425, 450]
@@ -193,8 +192,8 @@ def find_screenshot_total_usage(img: np.ndarray) -> tuple[str, str | None]:
                 total = total + " " + total_find["text"][i]
                 total = total.replace("|", "").strip()
 
-    print("Found total: " + total)
     total = total.strip()
+    print("Found total: " + total)
 
     total_image_path = None
     if total_image is not None:
@@ -203,12 +202,12 @@ def find_screenshot_total_usage(img: np.ndarray) -> tuple[str, str | None]:
         total_image_path = Path(debug_extracted_total_folder) / "total_extract.jpg"
         cv2.imwrite(str(total_image_path), total_image)
 
-    if not total or not re.search(r"\d+\s*[hm]", total):
-        print("Original method failed to find total time, trying regex approach...")
-        regex_total, regex_image_path = find_screenshot_total_usage_regex(img)
+    # if not total or not re.search(r"\d+\s*[hm]", total):
+    #     print("Original method failed to find total time, trying regex approach...")
+    #     regex_total, regex_image_path = find_screenshot_total_usage_regex(img)
 
-        if regex_total:
-            return regex_total, regex_image_path
+    #     if regex_total:
+    #         return regex_total, regex_image_path
 
     return total, str(total_image_path)
 
@@ -407,7 +406,7 @@ def extract_line(img, x0: int, x1: int, y0: int, y1: int, line_extraction_mode: 
         raise ValueError(msg)
 
 
-def is_close(pixel_1: np.ndarray, pixel_2: np.ndarray, thresh: int = 1) -> bool:
+def is_close(pixel_1: np.ndarray | list[int], pixel_2: np.ndarray | list[int], thresh: int = 1) -> bool:
     """Decide if two pixels are close enough"""
     return np.sum(np.abs(pixel_1 - pixel_2)) <= thresh * len(pixel_1)
 
@@ -477,7 +476,7 @@ def slice_image(
         for y_coord in range(rows):
             if np.sum(true_slice[y_coord]) == 0:
                 counter = counter + 1
-            if is_close(true_slice[y_coord], np.ndarray([255, 255, 255]), 2) and y_coord < rows - lower_grid_buffer:
+            if is_close(true_slice[y_coord], [255, 255, 255], 2) and y_coord < rows - lower_grid_buffer:
                 counter = 0
 
         if VERBOSE:
@@ -634,7 +633,7 @@ def extract_line_snap_to_grid(
     if grid_color is not None and is_battery:
         pixel_value = grid_color
         sub_image = remove_all_but(sub_image, pixel_value, 100)
-        pixel_value = np.ndarray([0, 0, 0])
+        pixel_value = [0, 0, 0]
     else:
         sub_image = reduce_color_count(sub_image, 2)
         pixel_value = get_pixel(sub_image, -2)

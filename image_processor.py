@@ -300,7 +300,7 @@ def save_image(
     debug_folder = "debug"
     Path(debug_folder).mkdir(parents=True, exist_ok=True)
 
-    graph_save_path = Path(debug_folder) / "graph_" / Path(filename).name
+    graph_save_path = Path(debug_folder) / f"graph_{Path(filename).name}"
     graph_save_path = str(graph_save_path).replace(".jfif", ".jpg")
 
     plt.figure(figsize=(8, 3))
